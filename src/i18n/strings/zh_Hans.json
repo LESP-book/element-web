@@ -976,7 +976,9 @@
         "empty_description": "从聊天中附加文件或将文件拖放到房间的任何地方。",
         "empty_heading": "此房间中没有文件可见",
         "guest_note": "你必须 <a>注册</a> 以使用此功能",
-        "peek_note": "你必须加入房间以看到它的文件"
+        "peek_note": "你必须加入房间以看到它的文件",
+        "search_placeholder": "按文件名搜索…",
+        "tab_media": "媒体"
     },
     "forward": {
         "filter_placeholder": "搜索房间或用户",
@@ -1610,6 +1612,12 @@
         "not_found_title_name": "%(roomName)s 不存在。",
         "peek_join_prompt": "你正在预览 %(roomName)s。想加入吗？",
         "read_topic": "点击阅读话题",
+        "search": {
+            "placeholder": "搜索消息…（回车）",
+            "tab_messages": "消息",
+            "tab_gallery": "图库",
+            "tab_files": "文件"
+        },
         "rejoin_button": "重新加入",
         "status_bar": {
             "delete_all": "删除全部",
@@ -1946,7 +1954,8 @@
         "warning_kind_files": "当前版本的 %(brand)s 不支持查看某些加密文件",
         "warning_kind_files_app": "使用<a>桌面端应用</a>来查看所有加密文件",
         "warning_kind_search": "当前版本的 %(brand)s 不支持搜索加密消息",
-        "warning_kind_search_app": "使用<a>桌面端英语</a>来搜索加密消息"
+        "warning_kind_search_app": "使用<a>桌面端英语</a>来搜索加密消息",
+        "warning_kind_search_settings": "在<a>设置</a>中启用消息搜索以搜索加密消息"
     },
     "setting": {
         "help_about": {

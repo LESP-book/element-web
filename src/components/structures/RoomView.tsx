@@ -41,7 +41,7 @@ import {
 import { KnownMembership } from "matrix-js-sdk/src/types";
 import { logger } from "matrix-js-sdk/src/logger";
 import { type CallState, type MatrixCall } from "matrix-js-sdk/src/webrtc/call";
-import { debounce, throttle } from "lodash";
+import { throttle } from "lodash";
 import { CryptoEvent } from "matrix-js-sdk/src/crypto-api";
 import { type ViewRoomOpts } from "@matrix-org/react-sdk-module-api/lib/lifecycles/RoomViewLifecycle";
 import { type RoomViewProps } from "@element-hq/element-web-module-api";
@@ -1772,7 +1772,8 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
     }
 
     private onSearch = (term: string, scope = SearchScope.Room): void => {
-        const roomId = scope === SearchScope.Room ? this.getRoomId() : undefined;
+        const effectiveScope = scope === SearchScope.All ? SearchScope.Room : scope;
+        const roomId = effectiveScope === SearchScope.Room ? this.getRoomId() : undefined;
         debuglog("sending search request");
         const abortController = new AbortController();
         const promise = eventSearch(this.context.client!, term, roomId, abortController.signal);
@@ -1785,7 +1786,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                 searchId: new Date().getTime(),
                 roomId,
                 term,
-                scope,
+                scope: effectiveScope,
                 promise,
                 abortController,
             },
@@ -1793,7 +1794,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
     };
 
     private onSearchScopeChange = (scope: SearchScope): void => {
-        this.onSearch(this.state.search?.term ?? "", scope);
+        this.onSearch(this.state.search?.term ?? "", SearchScope.Room);
     };
 
     private onSearchUpdate = (inProgress: boolean, searchResults: ISearchResults | null, error: Error | null): void => {
@@ -1927,9 +1928,9 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         defaultDispatcher.fire(Action.ViewRoomDirectory);
     };
 
-    private onSearchChange = debounce((term: string): void => {
+    private onSearchChange = (term: string): void => {
         this.onSearch(term);
-    }, 300);
+    };
 
     private onCancelSearchClick = (): Promise<void> => {
         return new Promise<void>((resolve) => {
