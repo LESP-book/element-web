@@ -736,11 +736,11 @@ export class ElementCall extends Call {
 
     /**
      * Generate the correct Element Call widget URL for creating or joining a call in this room.
-     * 优先级（高 → 低）：
+     *优先级（高 → 低）：
      * 1) `Developer.elementCallUrl`（开发者工具设置）
      * 2) `element_call.url`（Element Web 配置）
      * 3) 内置的 embedded Element Call 包（`./widgets/element-call/index.html`）
-     *
+     * 
      * @param client
      * @param roomId
      * @param opts
@@ -749,13 +749,19 @@ export class ElementCall extends Call {
     private static generateWidgetUrl(client: MatrixClient, roomId: string, opts: WidgetGenerationParameters = {}): URL {
         const elementCallUrlOverride = SettingsStore.getValue("Developer.elementCallUrl");
         const elementCallConfigUrl = SdkConfig.get("element_call").url;
-        const url = elementCallUrlOverride
-            ? new URL(elementCallUrlOverride)
-            : elementCallConfigUrl
-              ? new URL(elementCallConfigUrl)
-              : // this strips hash fragment from baseUrl
-                new URL("./widgets/element-call/index.html#", window.location.href);
-
+        let url: URL;
+        if (elementCallUrlOverride) {
+            url = new URL(elementCallUrlOverride);
+        } else if (elementCallConfigUrl) {
+            // For external Element Call deployments, append /room path to trigger RoomPage routing
+            const baseUrl = elementCallConfigUrl.endsWith("/")
+                ? elementCallConfigUrl
+                : elementCallConfigUrl + "/";
+            url = new URL("room", baseUrl);
+        } else {
+            // this strips hash fragment from baseUrl
+            url = new URL("./widgets/element-call/index.html#", window.location.href);
+        }
         // Splice together the Element Call URL for this call
         // Parameters can be found in https://github.com/element-hq/element-call/blob/livekit/src/UrlParams.ts.
         const params = new URLSearchParams({

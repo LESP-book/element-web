@@ -122,14 +122,6 @@ export interface IConfigOptions {
         obey_asserted_identity?: boolean; // MSC3086
     };
     element_call: {
-        /**
-         * Element Call 的基础 URL（可选）。
-         *
-         * 如果设置，将用于生成 Element Call 小组件 URL（替代内置的 `./widgets/element-call/index.html`）。
-         * 典型值类似：`https://call.example.org/room/`（或你的部署入口路径）。
-         *
-         * 注意：该配置会影响嵌入式 Element Call（在 Element Web 内通过 iframe 加载）的实际来源。
-         */
         url?: string;
         guest_spa_url?: string;
         use_exclusively?: boolean;
