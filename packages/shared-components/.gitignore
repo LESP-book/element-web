@@ -1,0 +1,13 @@
+# Ignore test failure screenshots
+/src/**/__screenshots__/
+
+# Ignore vis diffs & local baseline
+/__vis__/**
+!/__vis__/linux/__baselines__
+
+# Ignore coverage report
+/coverage/
+# Ignore generated docs
+typedoc
+# Build storybook
+storybook-static
