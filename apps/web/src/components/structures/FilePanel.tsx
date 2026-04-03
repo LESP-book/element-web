@@ -18,6 +18,7 @@ import {
 import { logger } from "matrix-js-sdk/src/logger";
 import FilesIcon from "@vector-im/compound-design-tokens/assets/web/icons/files";
 import { Form, Search } from "@vector-im/compound-web";
+import { TimelineSeparator } from "@element-hq/web-shared-components";
 
 import { MatrixClientPeg } from "../../MatrixClientPeg";
 import EventIndexPeg from "../../indexing/EventIndexPeg";
@@ -32,7 +33,6 @@ import { ScopedRoomContextProvider } from "../../contexts/ScopedRoomContext.tsx"
 import ScrollPanel from "./ScrollPanel";
 import { FilterTabGroup } from "../views/elements/FilterTabGroup";
 import SearchResultTile from "../views/rooms/SearchResultTile";
-import TimelineSeparator from "../views/messages/TimelineSeparator";
 import { formatFullDateNoDayNoTime } from "../../DateUtils";
 
 interface IProps {
