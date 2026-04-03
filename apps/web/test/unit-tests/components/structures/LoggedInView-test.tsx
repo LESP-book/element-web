@@ -582,11 +582,21 @@ describe("<LoggedInView />", () => {
             expect(mockResize).toHaveBeenCalledWith(350);
         });
 
+        it("should keep stored width when new room list is already wider than the avatar-only minimum", async () => {
+            await SettingsStore.setValue("feature_new_room_list", null, SettingLevel.DEVICE, true);
+
+            window.localStorage.setItem("mx_lhs_size", "100");
+
+            getComponent();
+
+            expect(mockResize).toHaveBeenCalledWith(100);
+        });
+
         it("should not set localStorage to 0 when resizing lp-resizer to minimum width for new room list", async () => {
             // Enable new room list feature and mock SettingsStore
             await SettingsStore.setValue("feature_new_room_list", null, SettingLevel.DEVICE, true);
 
-            const minimumWidth = 224; // NEW_ROOM_LIST_MIN_WIDTH
+            const minimumWidth = 68; // NEW_ROOM_LIST_MIN_WIDTH
 
             // Render the component
             getComponent();
@@ -606,8 +616,8 @@ describe("<LoggedInView />", () => {
             callbacks.onCollapsed(isCollapsed); // Not collapsed for new room list
             callbacks.onResizeStop();
 
-            // Verify localStorage was set to the minimum width (224), not 0
-            expect(window.localStorage.getItem("mx_lhs_size")).toBe("224");
+            // Verify localStorage was set to the minimum width (68), not 0
+            expect(window.localStorage.getItem("mx_lhs_size")).toBe("68");
         });
     });
 

@@ -32,6 +32,8 @@
     .hoverMenu {
         display: none;
     }
+
+    container-type: inline-size;
 }
 
 /* Show hover menu and background on hover/focus/menu-open states */
@@ -75,6 +77,10 @@
     min-width: 0;
 }
 
+.roomListItem:has(.notificationDecoration) .content {
+    padding-right: 44px;
+}
+
 .text {
     min-width: 0;
 }
@@ -111,6 +117,13 @@
     color: var(--cpd-color-text-primary);
 }
 
+.notificationDecoration {
+    position: absolute;
+    top: 50%;
+    right: calc(var(--cpd-space-3x) + var(--cpd-space-2x));
+    transform: translateY(-50%);
+}
+
 /* Set icon color for hover menu buttons */
 .hoverMenu svg {
     fill: var(--cpd-color-icon-primary);
@@ -126,4 +139,27 @@
 
 .lastItem {
     --padding-bottom: 0px;
+}
+
+@container (max-width: 120px) {
+    .container {
+        flex: 0 0 auto;
+        width: 40px;
+        min-width: 40px;
+        margin: 0 auto;
+        padding: var(--cpd-space-1x);
+        justify-content: center;
+    }
+
+    .content {
+        display: none;
+        padding-right: 0;
+    }
+
+    .notificationDecoration {
+        top: auto;
+        right: -2px;
+        bottom: -2px;
+        transform: none;
+    }
 }
