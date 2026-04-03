@@ -72,13 +72,16 @@
     min-width: 0;
 }
 
+.avatarSlot {
+    position: relative;
+    flex: 0 0 auto;
+    inline-size: 32px;
+    block-size: 32px;
+}
+
 .content {
     flex: 1;
     min-width: 0;
-}
-
-.roomListItem:has(.notificationDecoration) .content {
-    padding-right: 44px;
 }
 
 .text {
@@ -119,9 +122,10 @@
 
 .notificationDecoration {
     position: absolute;
-    top: 50%;
-    right: calc(var(--cpd-space-3x) + var(--cpd-space-2x));
-    transform: translateY(-50%);
+    top: -4px;
+    right: -4px;
+    z-index: 1;
+    transform: none;
 }
 
 /* Set icon color for hover menu buttons */
@@ -153,13 +157,5 @@
 
     .content {
         display: none;
-        padding-right: 0;
-    }
-
-    .notificationDecoration {
-        top: auto;
-        right: -2px;
-        bottom: -2px;
-        transform: none;
     }
 }

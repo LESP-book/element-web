@@ -118,6 +118,15 @@ describe("<RoomListItemView />", () => {
         expect(screen.getByTestId("notification-decoration")).toBeInTheDocument();
     });
 
+    it("should render notification decoration outside the content container", () => {
+        render(<WithNotification />);
+        const notificationDecoration = screen.getByTestId("room-list-item-notification-decoration");
+        const content = screen.getByTestId("room-list-item-content");
+        const avatarSlot = screen.getByTestId("room-list-item-avatar-slot");
+        expect(content.contains(notificationDecoration)).toBe(false);
+        expect(avatarSlot.contains(notificationDecoration)).toBe(true);
+    });
+
     it("should hide notification decoration when not present", () => {
         render(<Default />);
         expect(screen.queryByTestId("notification-decoration")).toBeNull();

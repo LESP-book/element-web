@@ -55,7 +55,13 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     GE
                   </div>
                   <div
+                    aria-hidden="true"
+                    class="notificationDecoration"
+                    data-testid="room-list-item-notification-decoration"
+                  />
+                  <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -147,6 +153,7 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     <div
                       aria-hidden="true"
                       class="notificationDecoration"
+                      data-testid="room-list-item-notification-decoration"
                     >
                       <div
                         class="flex"
@@ -205,6 +212,7 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                   </div>
                   <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -287,10 +295,6 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                         </div>
                       </button>
                     </div>
-                    <div
-                      aria-hidden="true"
-                      class="notificationDecoration"
-                    />
                   </div>
                 </div>
               </button>
@@ -326,7 +330,13 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     EN
                   </div>
                   <div
+                    aria-hidden="true"
+                    class="notificationDecoration"
+                    data-testid="room-list-item-notification-decoration"
+                  />
+                  <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -415,10 +425,6 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                         </div>
                       </button>
                     </div>
-                    <div
-                      aria-hidden="true"
-                      class="notificationDecoration"
-                    />
                   </div>
                 </div>
               </button>
@@ -454,7 +460,13 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     DE
                   </div>
                   <div
+                    aria-hidden="true"
+                    class="notificationDecoration"
+                    data-testid="room-list-item-notification-decoration"
+                  />
+                  <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -537,10 +549,6 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                         </div>
                       </button>
                     </div>
-                    <div
-                      aria-hidden="true"
-                      class="notificationDecoration"
-                    />
                   </div>
                 </div>
               </button>
@@ -576,7 +584,13 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     PR
                   </div>
                   <div
+                    aria-hidden="true"
+                    class="notificationDecoration"
+                    data-testid="room-list-item-notification-decoration"
+                  />
+                  <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -665,10 +679,6 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                         </div>
                       </button>
                     </div>
-                    <div
-                      aria-hidden="true"
-                      class="notificationDecoration"
-                    />
                   </div>
                 </div>
               </button>
@@ -704,7 +714,13 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     MA
                   </div>
                   <div
+                    aria-hidden="true"
+                    class="notificationDecoration"
+                    data-testid="room-list-item-notification-decoration"
+                  />
+                  <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -790,6 +806,7 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     <div
                       aria-hidden="true"
                       class="notificationDecoration"
+                      data-testid="room-list-item-notification-decoration"
                     >
                       <div
                         class="flex"
@@ -850,6 +867,7 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                   </div>
                   <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -938,10 +956,6 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                         </div>
                       </button>
                     </div>
-                    <div
-                      aria-hidden="true"
-                      class="notificationDecoration"
-                    />
                   </div>
                 </div>
               </button>
@@ -977,7 +991,13 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     SU
                   </div>
                   <div
+                    aria-hidden="true"
+                    class="notificationDecoration"
+                    data-testid="room-list-item-notification-decoration"
+                  />
+                  <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -1060,10 +1080,6 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                         </div>
                       </button>
                     </div>
-                    <div
-                      aria-hidden="true"
-                      class="notificationDecoration"
-                    />
                   </div>
                 </div>
               </button>
@@ -1099,7 +1115,13 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     AN
                   </div>
                   <div
+                    aria-hidden="true"
+                    class="notificationDecoration"
+                    data-testid="room-list-item-notification-decoration"
+                  />
+                  <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -1188,10 +1210,6 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                         </div>
                       </button>
                     </div>
-                    <div
-                      aria-hidden="true"
-                      class="notificationDecoration"
-                    />
                   </div>
                 </div>
               </button>
@@ -1227,7 +1245,13 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                     OF
                   </div>
                   <div
+                    aria-hidden="true"
+                    class="notificationDecoration"
+                    data-testid="room-list-item-notification-decoration"
+                  />
+                  <div
                     class="flex content"
+                    data-testid="room-list-item-content"
                     style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
                   >
                     <div
@@ -1310,10 +1334,6 @@ exports[`<VirtualizedRoomListView /> > renders Default story 1`] = `
                         </div>
                       </button>
                     </div>
-                    <div
-                      aria-hidden="true"
-                      class="notificationDecoration"
-                    />
                   </div>
                 </div>
               </button>

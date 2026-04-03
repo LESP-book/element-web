@@ -11,6 +11,7 @@
     box-sizing: border-box;
     border-bottom: var(--cpd-border-width-1) solid var(--cpd-color-bg-subtle-primary);
     padding: 0 var(--cpd-space-3x);
+    container-type: inline-size;
 }
 
 .search {
@@ -44,4 +45,29 @@
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: start;
+}
+
+@container (max-width: 80px) {
+    .view {
+        min-height: auto;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: var(--cpd-space-2x) 0;
+    }
+
+    .view > button {
+        inline-size: 40px;
+        min-width: 40px;
+        justify-content: center;
+        padding-inline: 0 !important;
+    }
+
+    .search {
+        flex: 0 0 auto;
+    }
+
+    .search_container {
+        display: none;
+    }
 }

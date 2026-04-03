@@ -7,6 +7,7 @@
 
 .roomListPrimaryFilters {
     padding: 0 var(--cpd-space-4x) var(--cpd-space-5x) var(--cpd-space-3x);
+    container-type: inline-size;
 }
 
 /* Hide filters that are wrapping when collapsed */
@@ -29,4 +30,22 @@
 
 .iconButton[aria-expanded="true"] svg {
     transform: rotate(180deg);
+}
+
+@container (max-width: 80px) {
+    .roomListPrimaryFilters {
+        align-items: center;
+        justify-content: center;
+        padding: 0 0 var(--cpd-space-4x);
+    }
+
+    .list {
+        display: none;
+    }
+
+    .iconButton {
+        inline-size: 40px;
+        min-width: 40px;
+        justify-content: center;
+    }
 }

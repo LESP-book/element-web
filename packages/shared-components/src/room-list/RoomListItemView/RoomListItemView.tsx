@@ -180,8 +180,24 @@ export const RoomListItemView = memo(function RoomListItemView({
                 {...props}
             >
                 <Flex className={styles.container} gap="var(--cpd-space-3x)" align="center">
-                    {renderAvatar(item.room)}
-                    <Flex className={styles.content} gap="var(--cpd-space-2x)" align="center" justify="space-between">
+                    <div className={styles.avatarSlot} data-testid="room-list-item-avatar-slot">
+                        {renderAvatar(item.room)}
+                        {/* Keep the unread badge anchored to the avatar so it remains attached in narrow sidebars. */}
+                        <div
+                            className={styles.notificationDecoration}
+                            aria-hidden={true}
+                            data-testid="room-list-item-notification-decoration"
+                        >
+                            <NotificationDecoration {...item.notification} />
+                        </div>
+                    </div>
+                    <Flex
+                        className={styles.content}
+                        gap="var(--cpd-space-2x)"
+                        align="center"
+                        justify="space-between"
+                        data-testid="room-list-item-content"
+                    >
                         {/* We truncate the room name when too long. Title here is to show the full name on hover */}
                         <div className={styles.ellipsis}>
                             <div className={styles.roomName} title={item.name} data-testid="room-name">
@@ -200,11 +216,6 @@ export const RoomListItemView = memo(function RoomListItemView({
                                 vm={vm}
                             />
                         )}
-
-                        {/* aria-hidden because we summarise the unread count/notification status in a11yLabel */}
-                        <div className={styles.notificationDecoration} aria-hidden={true}>
-                            <NotificationDecoration {...item.notification} />
-                        </div>
                     </Flex>
                 </Flex>
             </Flex>

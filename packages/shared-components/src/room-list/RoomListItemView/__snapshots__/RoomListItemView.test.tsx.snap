@@ -30,7 +30,13 @@ exports[`<RoomListItemView /> > renders Bold story 1`] = `
           GE
         </div>
         <div
+          aria-hidden="true"
+          class="notificationDecoration"
+          data-testid="room-list-item-notification-decoration"
+        />
+        <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -119,10 +125,6 @@ exports[`<RoomListItemView /> > renders Bold story 1`] = `
               </div>
             </button>
           </div>
-          <div
-            aria-hidden="true"
-            class="notificationDecoration"
-          />
         </div>
       </div>
     </button>
@@ -160,7 +162,13 @@ exports[`<RoomListItemView /> > renders Default story 1`] = `
           GE
         </div>
         <div
+          aria-hidden="true"
+          class="notificationDecoration"
+          data-testid="room-list-item-notification-decoration"
+        />
+        <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -249,10 +257,6 @@ exports[`<RoomListItemView /> > renders Default story 1`] = `
               </div>
             </button>
           </div>
-          <div
-            aria-hidden="true"
-            class="notificationDecoration"
-          />
         </div>
       </div>
     </button>
@@ -290,7 +294,13 @@ exports[`<RoomListItemView /> > renders Invitation story 1`] = `
           GE
         </div>
         <div
+          aria-hidden="true"
+          class="notificationDecoration"
+          data-testid="room-list-item-notification-decoration"
+        />
+        <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -382,6 +392,7 @@ exports[`<RoomListItemView /> > renders Invitation story 1`] = `
           <div
             aria-hidden="true"
             class="notificationDecoration"
+            data-testid="room-list-item-notification-decoration"
           >
             <div
               class="flex"
@@ -439,6 +450,7 @@ exports[`<RoomListItemView /> > renders NoMessagePreview story 1`] = `
         </div>
         <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -521,10 +533,6 @@ exports[`<RoomListItemView /> > renders NoMessagePreview story 1`] = `
               </div>
             </button>
           </div>
-          <div
-            aria-hidden="true"
-            class="notificationDecoration"
-          />
         </div>
       </div>
     </button>
@@ -562,7 +570,13 @@ exports[`<RoomListItemView /> > renders Selected story 1`] = `
           GE
         </div>
         <div
+          aria-hidden="true"
+          class="notificationDecoration"
+          data-testid="room-list-item-notification-decoration"
+        />
+        <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -651,10 +665,6 @@ exports[`<RoomListItemView /> > renders Selected story 1`] = `
               </div>
             </button>
           </div>
-          <div
-            aria-hidden="true"
-            class="notificationDecoration"
-          />
         </div>
       </div>
     </button>
@@ -692,7 +702,13 @@ exports[`<RoomListItemView /> > renders UnsentMessage story 1`] = `
           GE
         </div>
         <div
+          aria-hidden="true"
+          class="notificationDecoration"
+          data-testid="room-list-item-notification-decoration"
+        />
+        <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -784,6 +800,7 @@ exports[`<RoomListItemView /> > renders UnsentMessage story 1`] = `
           <div
             aria-hidden="true"
             class="notificationDecoration"
+            data-testid="room-list-item-notification-decoration"
           >
             <div
               class="flex"
@@ -841,6 +858,7 @@ exports[`<RoomListItemView /> > renders WithHoverMenu story 1`] = `
         </div>
         <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -929,10 +947,6 @@ exports[`<RoomListItemView /> > renders WithHoverMenu story 1`] = `
               </div>
             </button>
           </div>
-          <div
-            aria-hidden="true"
-            class="notificationDecoration"
-          />
         </div>
       </div>
     </button>
@@ -971,6 +985,7 @@ exports[`<RoomListItemView /> > renders WithMention story 1`] = `
         </div>
         <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -1062,6 +1077,7 @@ exports[`<RoomListItemView /> > renders WithMention story 1`] = `
           <div
             aria-hidden="true"
             class="notificationDecoration"
+            data-testid="room-list-item-notification-decoration"
           >
             <div
               class="flex"
@@ -1124,6 +1140,7 @@ exports[`<RoomListItemView /> > renders WithNotification story 1`] = `
         </div>
         <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -1215,6 +1232,7 @@ exports[`<RoomListItemView /> > renders WithNotification story 1`] = `
           <div
             aria-hidden="true"
             class="notificationDecoration"
+            data-testid="room-list-item-notification-decoration"
           >
             <div
               class="flex"
@@ -1266,6 +1284,7 @@ exports[`<RoomListItemView /> > renders WithVideoCall story 1`] = `
         </div>
         <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -1357,6 +1376,7 @@ exports[`<RoomListItemView /> > renders WithVideoCall story 1`] = `
           <div
             aria-hidden="true"
             class="notificationDecoration"
+            data-testid="room-list-item-notification-decoration"
           >
             <div
               class="flex"
@@ -1414,6 +1434,7 @@ exports[`<RoomListItemView /> > renders WithVoiceCall story 1`] = `
         </div>
         <div
           class="flex content"
+          data-testid="room-list-item-content"
           style="--mx-flex-display: flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: space-between; --mx-flex-gap: var(--cpd-space-2x); --mx-flex-wrap: nowrap;"
         >
           <div
@@ -1505,6 +1526,7 @@ exports[`<RoomListItemView /> > renders WithVoiceCall story 1`] = `
           <div
             aria-hidden="true"
             class="notificationDecoration"
+            data-testid="room-list-item-notification-decoration"
           >
             <div
               class="flex"
