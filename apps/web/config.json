@@ -26,12 +26,12 @@
     "default_country_code": "GB",
     "show_labs_settings": true,
     "features": {
-        "feature_new_room_list": false,
+        "feature_new_room_list": true,
         "feature_group_calls": true,
         "feature_element_call_video_rooms": true
     },
     "default_federate": true,
-    "default_theme": "match system",
+    "default_theme": "light",
     "room_directory": {
         "servers": ["matrix.org"]
     },
