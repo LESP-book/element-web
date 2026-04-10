@@ -53,3 +53,4 @@ CLAUDE.md
 # vitepress
 /docs/.vitepress/dist
 /docs/.vitepress/cache
+.omx/
