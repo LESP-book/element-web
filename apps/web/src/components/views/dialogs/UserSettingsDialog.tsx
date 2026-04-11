@@ -24,7 +24,7 @@ import LabsIcon from "@vector-im/compound-design-tokens/assets/web/icons/labs";
 import BlockIcon from "@vector-im/compound-design-tokens/assets/web/icons/block";
 import HelpIcon from "@vector-im/compound-design-tokens/assets/web/icons/help";
 
-import TabbedView, { Tab, useActiveTabWithDefault } from "../../structures/TabbedView";
+import TabbedView, { Tab, TabLocation, useActiveTabWithDefault } from "../../structures/TabbedView";
 import { _t, _td } from "../../../languageHandler";
 import AccountUserSettingsTab from "../settings/tabs/user/AccountUserSettingsTab";
 import SettingsStore from "../../../settings/SettingsStore";
@@ -59,6 +59,7 @@ interface IProps {
     initialEncryptionState?: State;
     sdkContext: SdkContextClass;
     onFinished(this: void): void;
+    embedded?: boolean;
 }
 
 function titleForTabID(tabId: UserTab): React.ReactNode {
@@ -95,7 +96,7 @@ function titleForTabID(tabId: UserTab): React.ReactNode {
     }
 }
 
-export default function UserSettingsDialog(props: IProps): JSX.Element {
+export function UserSettingsView(props: IProps): JSX.Element {
     const voipEnabled = useSettingValue(UIFeature.Voip);
     const mjolnirEnabled = useSettingValue("feature_mjolnir");
     // store these props in state as changing tabs back and forth should clear them
@@ -261,33 +262,48 @@ export default function UserSettingsDialog(props: IProps): JSX.Element {
 
     const [activeToast, toastRack] = useActiveToast();
 
+    const content = (
+        <>
+            <div className="mx_SettingsDialog_content">
+                        <TabbedView
+                            tabs={getTabs()}
+                            activeTabId={activeTabId}
+                            screenName="UserSettings"
+                            onChange={setActiveTabId}
+                            responsive={!props.embedded}
+                            tabLocation={props.embedded ? TabLocation.TOP : TabLocation.LEFT}
+                        />
+            </div>
+            <div className="mx_SettingsDialog_toastContainer">{activeToast && <Toast>{activeToast}</Toast>}</div>
+        </>
+    );
+
     return (
         // XXX: SDKContext is provided within the LoggedInView subtree.
         // Modals function outside the MatrixChat React tree, so sdkContext is reprovided here to simulate that.
         // The longer term solution is to move our ModalManager into the React tree to inherit contexts properly.
         <SDKContext.Provider value={props.sdkContext}>
             <ToastContext.Provider value={toastRack}>
-                <BaseDialog
-                    className="mx_UserSettingsDialog"
-                    hasCancel={true}
-                    onFinished={props.onFinished}
-                    title={titleForTabID(activeTabId)}
-                    titleClass="mx_UserSettingsDialog_title"
-                >
-                    <div className="mx_SettingsDialog_content">
-                        <TabbedView
-                            tabs={getTabs()}
-                            activeTabId={activeTabId}
-                            screenName="UserSettings"
-                            onChange={setActiveTabId}
-                            responsive={true}
-                        />
+                {props.embedded ? (
+                    <div className="mx_UserSettingsView" data-testid="mx_MobileSettingsView">
+                        {content}
                     </div>
-                    <div className="mx_SettingsDialog_toastContainer">
-                        {activeToast && <Toast>{activeToast}</Toast>}
-                    </div>
-                </BaseDialog>
+                ) : (
+                    <BaseDialog
+                        className="mx_UserSettingsDialog"
+                        hasCancel={true}
+                        onFinished={props.onFinished}
+                        title={titleForTabID(activeTabId)}
+                        titleClass="mx_UserSettingsDialog_title"
+                    >
+                        {content}
+                    </BaseDialog>
+                )}
             </ToastContext.Provider>
         </SDKContext.Provider>
     );
+}
+
+export default function UserSettingsDialog(props: IProps): JSX.Element {
+    return <UserSettingsView {...props} />;
 }

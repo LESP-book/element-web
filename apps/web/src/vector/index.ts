@@ -15,6 +15,8 @@ import { shouldPolyfill as shouldPolyFillIntlSegmenter } from "@formatjs/intl-se
 
 // These are things that can run before the skin loads - be careful not to reference the react-sdk though.
 import { parseQsFromFragment } from "./url_utils";
+import SdkConfig from "../SdkConfig";
+import { shouldRedirectToMobileGuide } from "../utils/device/mobileWebShell";
 import "./modernizr.cjs";
 
 // Import shared components CSS
@@ -144,22 +146,21 @@ async function start(): Promise<void> {
         // (https://github.com/element-hq/element-web/issues/7378)
         const preventRedirect = fragparts.params.client_secret || fragparts.location.length > 0;
 
-        if (!preventRedirect) {
-            const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-            const isAndroid = /Android/.test(navigator.userAgent);
-            if (isIos || isAndroid) {
-                if (document.cookie.indexOf("element_mobile_redirect_to_guide=false") === -1) {
-                    window.location.href = "mobile_guide/";
-                    return;
-                }
-            }
-        }
-
         // set the platform for react sdk
         preparePlatform();
         // load config requires the platform to be ready
         const loadConfigPromise = loadConfig();
-        await settled(loadConfigPromise); // wait for it to settle
+        await settled(loadConfigPromise); // wait for it to settle so runtime config can influence mobile-shell gating
+
+        if (!preventRedirect) {
+            if (
+                shouldRedirectToMobileGuide(SdkConfig.get(), window) &&
+                document.cookie.indexOf("element_mobile_redirect_to_guide=false") === -1
+            ) {
+                window.location.href = "mobile_guide/";
+                return;
+            }
+        }
         // keep initialising so that we can show any possible error with as many features (theme, i18n) as possible
 
         // now that the config is ready, try to persist logs

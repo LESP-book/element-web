@@ -1,0 +1,340 @@
+.mx_MobileShell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    block-size: 100%;
+    min-block-size: 100dvh;
+    overflow: hidden;
+    background: var(--cpd-color-bg-canvas-default);
+    color: var(--cpd-color-text-primary);
+}
+
+.mx_MobileShell_appBar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-block-size: 56px;
+    padding: max(8px, env(safe-area-inset-top)) 16px 8px;
+    background: var(--cpd-color-bg-subtle-primary);
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+}
+
+.mx_MobileShell_title {
+    font: var(--cpd-font-heading-sm-semibold);
+}
+
+.mx_MobileShell_iconButton,
+.mx_MobileShell_navItem,
+.mx_MobileShell_fab,
+.mx_MobileChatsScreen_profile,
+.mx_MobileChatsScreen_iconButton,
+.mx_MobileChatsScreen_spaceChip {
+    border: 0;
+    cursor: pointer;
+}
+
+.mx_MobileShell_iconButton,
+.mx_MobileChatsScreen_iconButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 40px;
+    block-size: 40px;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    flex-shrink: 0;
+}
+
+.mx_MobileShell_content {
+    display: flex;
+    flex: 1;
+    min-block-size: 0;
+    padding-bottom: calc(72px + max(12px, env(safe-area-inset-bottom)));
+    overflow: hidden;
+}
+
+.mx_MobileShell_content__room {
+    padding-bottom: 0;
+}
+
+.mx_MobileShell_screen {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    background: var(--cpd-color-bg-canvas-default);
+}
+
+.mx_MobileShell_screen--stack {
+    overflow: hidden;
+}
+
+.mx_MobileShell_screen--chats {
+    padding-bottom: 0;
+}
+
+.mx_MobileShell_screen--room {
+    overflow: hidden;
+}
+
+.mx_MobileShell_screen--room,
+.mx_MobileShell_screen--room > *,
+.mx_MobileShell_screen--room .mx_RoomView_wrapper,
+.mx_MobileShell_screen--room .mx_RoomView,
+.mx_MobileShell_screen--room .mx_RoomView_body,
+.mx_MobileShell_screen--room .mx_MainSplit,
+.mx_MobileShell_screen--room .mx_RoomView_messagePanel {
+    min-block-size: 0;
+}
+
+.mx_MobileShell_screen--room > .mx_RoomView_wrapper,
+.mx_MobileShell_screen--room .mx_RoomView,
+.mx_MobileShell_screen--room .mx_MainSplit {
+    display: flex;
+    flex: 1;
+}
+
+.mx_MobileShell_screen--room .mx_RoomHeader {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.mx_MobileShell_screen--room .mx_MessageComposer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+.mx_MobileShell_bottomNav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px 12px calc(8px + max(12px, env(safe-area-inset-bottom)));
+    background: color-mix(in srgb, var(--cpd-color-bg-canvas-default) 92%, transparent);
+    border-top: 1px solid var(--cpd-color-border-interactive-secondary);
+    backdrop-filter: blur(16px);
+}
+
+.mx_MobileShell_navItem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-block-size: 52px;
+    padding: 6px 8px;
+    border-radius: 16px;
+    background: transparent;
+    color: var(--cpd-color-text-secondary);
+    font: var(--cpd-font-body-sm-medium);
+}
+
+.mx_MobileShell_navItem--active {
+    color: var(--cpd-color-text-primary);
+    background: var(--cpd-color-bg-subtle-secondary);
+}
+
+.mx_MobileShell_navItem svg,
+.mx_MobileShell_iconButton svg,
+.mx_MobileChatsScreen_iconButton svg {
+    inline-size: 20px;
+    block-size: 20px;
+}
+
+.mx_MobileShell_fab {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    z-index: 5;
+    inline-size: 56px;
+    block-size: 56px;
+    border-radius: 20px;
+    background: var(--cpd-color-bg-accent-rest);
+    color: var(--cpd-color-text-on-solid-primary);
+    font-size: 2rem;
+    line-height: 1;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
+}
+
+.mx_MobileChatsScreen {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-block-size: 0;
+    background: var(--cpd-color-bg-canvas-default);
+}
+
+.mx_MobileChatsScreen_header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 10px;
+}
+
+.mx_MobileChatsScreen_profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-inline-size: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+}
+
+.mx_MobileChatsScreen_profileLabel {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--cpd-font-body-lg-semibold);
+}
+
+.mx_MobileChatsScreen_spaceChips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 0 16px 12px;
+    scrollbar-width: none;
+}
+
+.mx_MobileChatsScreen_spaceChips::-webkit-scrollbar {
+    display: none;
+}
+
+.mx_MobileChatsScreen_spaceChip {
+    flex: 0 0 auto;
+    padding: 9px 14px;
+    border-radius: 999px;
+    background: var(--cpd-color-bg-subtle-secondary);
+    color: var(--cpd-color-text-secondary);
+    font: var(--cpd-font-body-sm-medium);
+}
+
+.mx_MobileChatsScreen_spaceChip--active {
+    background: var(--cpd-color-bg-accent-rest);
+    color: var(--cpd-color-text-on-solid-primary);
+}
+
+.mx_MobileChatsScreen_list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-block-size: 0;
+    padding: 0 8px 16px;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.mx_MobileChatsScreen_list > div:first-child {
+    display: none;
+}
+
+.mx_MobileChatsScreen_list > [data-testid="room-list"] {
+    flex: 1;
+    min-block-size: 0;
+    min-inline-size: 0;
+    box-sizing: border-box;
+}
+
+.mx_MobileChatsScreen_list .mx_RoomListItemView {
+    container-type: normal;
+}
+
+.mx_MobileChatsScreen_list [data-testid="room-list-item-content"] {
+    display: flex !important;
+}
+
+.mx_MobileChatsScreen_list .mx_RoomListItemView .mx_NotificationBadge {
+    min-inline-size: 20px;
+}
+
+.mx_MobileChatsScreen_list [role="treegrid"],
+.mx_MobileChatsScreen_list [role="listbox"] {
+    inline-size: 100%;
+}
+
+.mx_MobileChatsScreen_list .mx_RoomListItemView > div:first-child {
+    margin-inline: 8px;
+    padding-inline: 12px;
+    border-radius: 16px;
+}
+
+.mx_UserSettingsView {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-block-size: 0;
+    background: var(--cpd-color-bg-canvas-default);
+}
+
+.mx_UserSettingsView .mx_SettingsDialog_content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-block-size: 0;
+}
+
+.mx_UserSettingsView .mx_TabbedView {
+    margin-top: 0;
+    padding: 0;
+}
+
+.mx_UserSettingsView .mx_TabbedView_tabLabels {
+    gap: 8px;
+    overflow-x: auto;
+    padding: 12px 16px;
+    margin: 0;
+    scrollbar-width: none;
+}
+
+.mx_UserSettingsView .mx_TabbedView_tabLabels::-webkit-scrollbar {
+    display: none;
+}
+
+.mx_UserSettingsView .mx_TabbedView_tabsOnTop .mx_TabbedView_tabLabel {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--cpd-color-bg-subtle-secondary);
+}
+
+.mx_UserSettingsView .mx_TabbedView_tabsOnTop .mx_TabbedView_tabLabel .mx_TabbedView_tabLabel_text {
+    font: var(--cpd-font-body-sm-medium);
+    color: inherit;
+}
+
+.mx_UserSettingsView .mx_TabbedView_tabsOnTop .mx_TabbedView_tabLabel_active {
+    background: var(--cpd-color-bg-accent-rest);
+    color: var(--cpd-color-text-on-solid-primary);
+}
+
+.mx_UserSettingsView .mx_TabbedView_tabsOnTop .mx_TabbedView_tabLabel_active .mx_TabbedView_tabLabel_text {
+    color: inherit;
+}
+
+.mx_UserSettingsView .mx_TabbedView_tabPanelContent {
+    padding: 0 16px 24px;
+}
+
+.mx_UserSettingsView .mx_TabbedView .mx_SettingsTab {
+    min-inline-size: 0;
+    padding-right: 0;
+    padding-bottom: 24px;
+}
+
+.mx_UserSettingsView .mx_SettingsDialog_toastContainer {
+    position: sticky;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 4;
+}

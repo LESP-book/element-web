@@ -100,6 +100,7 @@ import { PosthogAnalytics } from "../../PosthogAnalytics";
 import { initSentry } from "../../sentry";
 import LegacyCallHandler from "../../LegacyCallHandler";
 import { showSpaceInvite } from "../../utils/space";
+import { isMobileWebShellEnabled } from "../../utils/device/mobileWebShell";
 import { type ButtonEvent } from "../views/elements/AccessibleButton";
 import { type ActionPayload } from "../../dispatcher/payloads";
 import { type SummarizedNotificationState } from "../../stores/notifications/SummarizedNotificationState";
@@ -1443,7 +1444,7 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             this.showScreenAfterLogin();
         }
 
-        if (SdkConfig.get("mobile_guide_toast")) {
+        if (SdkConfig.get("mobile_guide_toast") && !isMobileWebShellEnabled(SdkConfig.get(), window)) {
             // The toast contains further logic to detect mobile platforms,
             // check if it has been dismissed before, etc.
             showMobileGuideToast();

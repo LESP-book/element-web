@@ -72,6 +72,8 @@ import { Landmark, LandmarkNavigation } from "../../accessibility/LandmarkNaviga
 import { ModuleApi } from "../../modules/Api.ts";
 import { SDKContext } from "../../contexts/SDKContext.ts";
 import { ResizerViewModel } from "../../viewmodels/structures/ResizerViewModel.ts";
+import { isMobileWebShellEnabled } from "../../utils/device/mobileWebShell";
+import MobileLoggedInView from "./mobile/MobileLoggedInView";
 
 // We need to fetch each pinned message individually (if we don't already have it)
 // so each pinned message may trigger a request. Limit the number per room for sanity.
@@ -706,6 +708,7 @@ class LoggedInView extends React.Component<IProps, IState> {
 
     public render(): React.ReactNode {
         let pageElement;
+        const mobileShellEnabled = isMobileWebShellEnabled(this.props.config, window);
 
         const moduleRenderer = this.props.page_type
             ? ModuleApi.instance.navigation.locationRenderers.get(this.props.page_type)
@@ -722,6 +725,7 @@ class LoggedInView extends React.Component<IProps, IState> {
                         key={this.props.currentRoomId || "roomview"}
                         justCreatedOpts={this.props.roomJustCreatedOpts}
                         forceTimeline={this.props.forceTimeline}
+                        hideRightPanel={mobileShellEnabled}
                     />
                 );
                 break;
@@ -768,6 +772,20 @@ class LoggedInView extends React.Component<IProps, IState> {
 
         const shouldUseMinimizedUI = !useNewRoomList && this.props.collapseLhs;
 
+        const leftPanelContent = !moduleRenderer ? (
+            <div
+                className="mx_LeftPanel_wrapper--user"
+                ref={this._resizeContainer}
+                data-collapsed={shouldUseMinimizedUI ? true : undefined}
+            >
+                <LeftPanel
+                    pageType={this.props.page_type as PageTypes}
+                    isMinimized={shouldUseMinimizedUI || false}
+                    resizeNotifier={this.context.resizeNotifier}
+                />
+            </div>
+        ) : undefined;
+
         const leftPanel = (
             <div className="mx_LeftPanel_outerWrapper">
                 <LeftPanelLiveShareWarning isMinimized={shouldUseMinimizedUI || false} />
@@ -777,25 +795,13 @@ class LoggedInView extends React.Component<IProps, IState> {
                     )}
                     {!useNewRoomList && <SpacePanel />}
                     {!useNewRoomList && <BackdropPanel backgroundImage={this.state.backgroundImage} />}
-                    {!moduleRenderer && (
-                        <div
-                            className="mx_LeftPanel_wrapper--user"
-                            ref={this._resizeContainer}
-                            data-collapsed={shouldUseMinimizedUI ? true : undefined}
-                        >
-                            <LeftPanel
-                                pageType={this.props.page_type as PageTypes}
-                                isMinimized={shouldUseMinimizedUI || false}
-                                resizeNotifier={this.context.resizeNotifier}
-                            />
-                        </div>
-                    )}
+                    {leftPanelContent}
                 </div>
             </div>
         );
 
         const roomView = <div className="mx_RoomView_wrapper">{pageElement}</div>;
-        const content =
+        const desktopContent =
             useNewRoomList && this.resizerViewModel ? (
                 <GroupView vm={this.resizerViewModel}>
                     <SpacePanel />
@@ -818,6 +824,15 @@ class LoggedInView extends React.Component<IProps, IState> {
                     {roomView}
                 </>
             );
+        const content = mobileShellEnabled ? (
+            <MobileLoggedInView
+                pageType={this.props.page_type as PageTypes | undefined}
+                pageElement={pageElement}
+                sdkContext={this.context}
+            />
+        ) : (
+            desktopContent
+        );
 
         return (
             <MatrixClientContextProvider client={this._matrixClient}>

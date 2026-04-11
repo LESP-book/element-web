@@ -88,6 +88,7 @@ export interface IConfigOptions {
 
     mobile_guide_toast?: boolean;
     mobile_guide_app_variant?: "element" | "element-classic" | "element-pro";
+    mobile_web_shell_enabled?: boolean;
 
     default_theme?: "light" | "dark" | string; // custom themes are strings
     default_country_code?: string; // ISO 3166 alpha2 country code
