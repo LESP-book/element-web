@@ -43,7 +43,7 @@
         "preferred_domain": "meet.element.io"
     },
     "element_call": {
-        "url": "https://call.element.io",
+        "url": "https://call.redworker.org",
         "brand": "Element Call"
     },
     "mobile_web_shell_enabled": true,
