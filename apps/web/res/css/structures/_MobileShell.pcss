@@ -3,7 +3,9 @@
     --mx-mobile-shell-safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --mx-mobile-shell-keyboard-inset: env(keyboard-inset-height, 0px);
     --mx-mobile-shell-bottom-nav-height: 72px;
-    --mx-mobile-shell-bottom-clearance: calc(max(12px, var(--mx-mobile-shell-safe-area-bottom)) + var(--mx-mobile-shell-keyboard-inset));
+    --mx-mobile-shell-bottom-clearance: calc(
+        max(12px, var(--mx-mobile-shell-safe-area-bottom)) + var(--mx-mobile-shell-keyboard-inset)
+    );
 
     position: relative;
     display: flex;
@@ -82,6 +84,12 @@
     overflow: hidden;
 }
 
+.mx_MobileShell_screen--settings {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
 .mx_MobileShell_screen--chats {
     padding-bottom: 0;
 }
@@ -94,10 +102,17 @@
     align-items: center;
     gap: 8px;
     min-block-size: 48px;
-    padding: max(4px, var(--mx-mobile-shell-safe-area-top)) 8px 4px;
+    padding: max(4px, var(--mx-mobile-shell-safe-area-top)) 136px 4px 8px;
     background: var(--cpd-color-bg-canvas-default);
     border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
     flex-shrink: 0;
+}
+
+.mx_MobileShell_roomBackBar .mx_MobileShell_title {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .mx_MobileShell_screen--room {
@@ -120,12 +135,6 @@
 .mx_MobileShell_screen--room .mx_MainSplit {
     display: flex;
     flex: 1;
-}
-
-.mx_MobileShell_screen--room .mx_RoomHeader {
-    position: sticky;
-    top: 0;
-    z-index: 5;
 }
 
 .mx_MobileShell_screen--room .mx_MessageComposer {
@@ -339,8 +348,12 @@
 }
 
 .mx_UserSettingsView .mx_TabbedView {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
     margin-top: 0;
     padding: 0;
+    min-block-size: 0;
 }
 
 .mx_UserSettingsView .mx_TabbedView_tabLabels {
@@ -353,6 +366,12 @@
 
 .mx_UserSettingsView .mx_TabbedView_tabLabels::-webkit-scrollbar {
     display: none;
+}
+
+.mx_UserSettingsView .mx_TabbedView_tabPanel {
+    display: flex;
+    flex: 1;
+    min-block-size: 0;
 }
 
 .mx_UserSettingsView .mx_TabbedView_tabsOnTop .mx_TabbedView_tabLabel {
@@ -377,7 +396,14 @@
 }
 
 .mx_UserSettingsView .mx_TabbedView_tabPanelContent {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-block-size: 0;
     padding: 0 16px 24px;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 .mx_UserSettingsView .mx_TabbedView .mx_SettingsTab {

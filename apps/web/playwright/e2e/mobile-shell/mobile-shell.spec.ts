@@ -61,6 +61,9 @@ test.describe("Mobile shell", () => {
         await expect(page.getByTestId("mx_MobileChatsScreen")).toBeVisible();
         await expect(page.getByTestId("mx_MobileShell_bottomNav")).toBeVisible();
         await expect(page.locator(".mx_SpacePanel")).toHaveCount(0);
+        await expect(page.locator(".mx_MobileShell_appBar")).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "People" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Other rooms" })).toHaveCount(0);
 
         const roomList = page.getByTestId("room-list");
         await expect(roomList).toBeVisible();
@@ -76,7 +79,8 @@ test.describe("Mobile shell", () => {
 
         await expect(page.getByTestId("mx_MobileRoomScreen")).toBeVisible();
         await expect(page.getByTestId("mx_MobileShell_roomBackBar")).toContainText(ROOM_NAMES[0]);
-        await expect(page.getByTestId("mx_MobileShell_roomInfoButton")).toBeVisible();
+        await expect(page.getByTestId("mx_MobileRoomHeaderActions")).toBeVisible();
+        await expect(page.getByTestId("mx_MobileRoomHeaderInfoButton")).toBeVisible();
         await expect(page.getByTestId("mx_MobileShell_bottomNav")).toHaveCount(0);
         await expect(app.getComposer()).toBeVisible();
 
@@ -85,6 +89,23 @@ test.describe("Mobile shell", () => {
         await composer.press("Enter");
         await expect(page.getByText("mobile shell smoke test")).toBeVisible();
 
+        await page.getByText("mobile shell smoke test").click();
+        const actionBar = page.locator(".mx_MessageActionBar:visible").first();
+        await expect(actionBar).toBeVisible();
+        const actionBarBox = await actionBar.boundingBox();
+        expect(actionBarBox).not.toBeNull();
+        expect(actionBarBox!.x + actionBarBox!.width).toBeLessThanOrEqual(pixel7.viewport.width - 4);
+
+        const actionWidths = await page
+            .locator(".mx_MessageComposer_actions")
+            .first()
+            .evaluate((element) => {
+                const parentWidth = element.parentElement?.getBoundingClientRect().width ?? 0;
+                const width = element.getBoundingClientRect().width;
+                return { width, parentWidth };
+            });
+        expect(actionWidths.width).toBeLessThan(actionWidths.parentWidth * 0.4);
+
         await expectNoHorizontalOverflow(page.getByTestId("mx_MobileRoomScreen"));
     });
 
@@ -92,11 +113,11 @@ test.describe("Mobile shell", () => {
         await app.viewRoomByName(ROOM_NAMES[1]);
 
         await expect(page.getByTestId("mx_MobileRoomScreen")).toBeVisible();
-        await page.getByTestId("mx_MobileShell_roomInfoButton").click();
+        await page.getByTestId("mx_MobileRoomHeaderInfoButton").click();
 
-        const roomInfoOverlay = page.locator(".mx_RoomView_mobileRightPanelOverlay:visible");
+        const roomInfoOverlay = page.getByTestId("mx_MobileRoomInfoOverlay");
         const rightPanel = roomInfoOverlay.getByTestId("right-panel");
-        await expect(page.getByTestId("mx_MobileRoomInfoScreen")).toBeVisible();
+        await expect(page.getByTestId("mx_MobileRoomScreen")).toBeVisible();
         await expect(roomInfoOverlay).toBeVisible();
         await expect(rightPanel).toBeVisible();
         await expect(rightPanel).toContainText(ROOM_NAMES[1]);
@@ -119,6 +140,13 @@ test.describe("Mobile shell", () => {
         await expect(settingsView.locator(".mx_TabbedView_tabsOnTop")).toBeVisible();
         await expect(settingsView.locator(".mx_TabbedView_tabsOnLeft")).toHaveCount(0);
         await expect(settingsView.getByRole("textbox", { name: "Display Name" })).toBeVisible();
+        const settingsPanel = settingsView.locator(".mx_TabbedView_tabPanelContent");
+        await expect(settingsPanel).toBeVisible();
+        const scrollTop = await settingsPanel.evaluate((element) => {
+            element.scrollTop = 400;
+            return element.scrollTop;
+        });
+        expect(scrollTop).toBeGreaterThan(0);
 
         await expectNoHorizontalOverflow(settingsView);
     });

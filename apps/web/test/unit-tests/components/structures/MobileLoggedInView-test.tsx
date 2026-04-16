@@ -14,7 +14,6 @@ import { TestSdkContext } from "../../TestSdkContext";
 import dis from "../../../../src/dispatcher/dispatcher";
 import { Action } from "../../../../src/dispatcher/actions";
 import { stubClient } from "../../../test-utils/test-utils";
-import { RightPanelPhases } from "../../../../src/stores/right-panel/RightPanelStorePhases";
 
 jest.mock("../../../../src/components/structures/NotificationPanel", () => () => <div>Mock Notifications</div>);
 jest.mock("../../../../src/components/views/dialogs/UserSettingsDialog", () => ({
@@ -24,15 +23,18 @@ jest.mock("../../../../src/components/views/dialogs/UserSettingsDialog", () => (
 function MockRoomView({
     hideHeader,
     mobileRightPanelMode,
+    showMobileHeaderActions,
 }: {
     hideHeader?: boolean;
     mobileRightPanelMode?: string;
+    showMobileHeaderActions?: boolean;
 }): React.JSX.Element {
     return (
         <div
             data-testid="mock-room-view"
             data-hide-header={String(Boolean(hideHeader))}
             data-mobile-right-panel-mode={mobileRightPanelMode ?? ""}
+            data-show-mobile-header-actions={String(Boolean(showMobileHeaderActions))}
         >
             Mock Room View
         </div>
@@ -82,6 +84,7 @@ describe("<MobileLoggedInView />", () => {
         expect(screen.getByTestId("mx_MobileChatsScreen")).toBeInTheDocument();
         expect(screen.queryByTestId("mx_MobileRoomScreen")).not.toBeInTheDocument();
         expect(screen.getByTestId("mx_MobileShell_bottomNav")).toBeInTheDocument();
+        expect(document.querySelector(".mx_MobileShell_appBar")).toBeNull();
     });
 
     it("renders a back button in room view that navigates to home", () => {
@@ -96,9 +99,10 @@ describe("<MobileLoggedInView />", () => {
         expect(backButton).toBeInTheDocument();
         expect(screen.getByTestId("mx_MobileShell_roomBackBar")).toBeInTheDocument();
         expect(screen.getByText("Mobile Alpha")).toBeInTheDocument();
-        expect(screen.getByTestId("mx_MobileShell_roomInfoButton")).toBeInTheDocument();
+        expect(screen.queryByTestId("mx_MobileShell_roomInfoButton")).not.toBeInTheDocument();
         expect(screen.getByTestId("mock-room-view")).toHaveAttribute("data-hide-header", "true");
         expect(screen.getByTestId("mock-room-view")).toHaveAttribute("data-mobile-right-panel-mode", "overlay");
+        expect(screen.getByTestId("mock-room-view")).toHaveAttribute("data-show-mobile-header-actions", "true");
 
         fireEvent.click(backButton);
         expect(dispatchSpy).toHaveBeenCalledWith({ action: Action.ViewHomePage });
@@ -106,30 +110,22 @@ describe("<MobileLoggedInView />", () => {
         dispatchSpy.mockRestore();
     });
 
-    it("opens room info from the mobile room header and returns to the timeline", () => {
+    it("uses the back button to close an open mobile room info panel before leaving the room", () => {
         const sdkContext = makeRoomSdkContext("Mobile Beta");
-        const setCardSpy = jest.spyOn(sdkContext.rightPanelStore, "setCard");
         const hideSpy = jest.spyOn(sdkContext.rightPanelStore, "hide");
+        const dispatchSpy = jest.spyOn(dis, "dispatch");
+        jest.spyOn(sdkContext.rightPanelStore, "isOpenForRoom").mockReturnValue(true);
 
         render(
             <MobileLoggedInView pageType={PageTypes.RoomView} pageElement={<MockRoomView />} sdkContext={sdkContext} />,
         );
-
-        fireEvent.click(screen.getByTestId("mx_MobileShell_roomInfoButton"));
-
-        expect(setCardSpy).toHaveBeenCalledWith(
-            { phase: RightPanelPhases.RoomSummary, state: {} },
-            true,
-            "!mobile-alpha:example.org",
-        );
-        expect(screen.getByTestId("mx_MobileRoomInfoScreen")).toBeInTheDocument();
-        expect(screen.queryByTestId("mx_MobileRoomScreen")).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId("mx_MobileShell_backButton"));
 
         expect(hideSpy).toHaveBeenCalledWith("!mobile-alpha:example.org");
         expect(screen.getByTestId("mx_MobileRoomScreen")).toBeInTheDocument();
         expect(screen.queryByTestId("mx_MobileRoomInfoScreen")).not.toBeInTheDocument();
+        expect(dispatchSpy).not.toHaveBeenCalledWith({ action: Action.ViewHomePage });
     });
 
     it("does not render a back button on non-room views", () => {

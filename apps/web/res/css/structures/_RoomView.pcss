@@ -300,6 +300,24 @@ Please see LICENSE files in the repository root for full details.
         --RoomView_MessageList-padding: 14px;
     }
 
+    .mx_RoomView_body {
+        position: relative;
+    }
+
+    .mx_MobileRoomHeaderActions {
+        position: absolute;
+        top: calc(-1 * (48px + env(safe-area-inset-top, 0px)));
+        right: 8px;
+        z-index: 12;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .mx_MobileRoomHeaderActions > * {
+        flex-shrink: 0;
+    }
+
     .mx_RoomView_body .mx_RoomView_timeline {
         margin-right: 0;
     }
@@ -317,12 +335,17 @@ Please see LICENSE files in the repository root for full details.
 
     .mx_RoomView .mx_MessageComposer_wrapper {
         padding-left: 16px;
-        padding-right: 12px;
+        padding-right: 10px;
     }
 
     .mx_RoomView .mx_MessageComposer_row {
         align-items: flex-end;
-        gap: 8px;
+        gap: 4px;
+    }
+
+    .mx_RoomView .mx_MessageComposer_actions {
+        gap: 2px;
+        flex: 0 0 auto;
     }
 
     .mx_RoomView .mx_MessageComposer_input {
@@ -333,8 +356,8 @@ Please see LICENSE files in the repository root for full details.
     .mx_RoomView .mx_MessageComposer_sendMessage,
     .mx_RoomView .mx_MessageComposer_button,
     .mx_RoomView .mx_MessageComposer_buttonMenu {
-        min-inline-size: 44px;
-        min-block-size: 44px;
+        min-inline-size: 34px;
+        min-block-size: 34px;
         touch-action: manipulation;
     }
 
@@ -343,16 +366,34 @@ Please see LICENSE files in the repository root for full details.
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 44px;
-        height: 44px;
-        padding: 10px;
+        width: 34px;
+        height: 34px;
+        padding: 7px;
         border-radius: 999px;
     }
 
     .mx_RoomView .mx_MessageComposer_button svg,
     .mx_RoomView .mx_MessageComposer_buttonMenu svg {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
+    }
+
+    .mx_RoomView .mx_MessageActionBar {
+        --MessageActionBar-size-button: 24px;
+        --MessageActionBar-size-margin: 2px;
+
+        top: -24px;
+        transform: scale(0.92);
+        transform-origin: top right;
+    }
+
+    .mx_RoomView .mx_EventTile[data-layout="bubble"] .mx_MessageActionBar {
+        right: 0;
+    }
+
+    .mx_RoomView .mx_EventTile[data-layout="bubble"][data-self="false"] .mx_MessageActionBar {
+        inset-inline-start: calc(100% - 116px);
+        inset-inline-end: auto;
     }
 
     .mx_RoomView .mx_EventTile_mediaLine,

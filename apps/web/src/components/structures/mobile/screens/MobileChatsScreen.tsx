@@ -15,15 +15,12 @@ import { UPDATE_EVENT } from "../../../../stores/AsyncStore";
 import { useEventEmitterState } from "../../../../hooks/useEventEmitter";
 import SpaceStore from "../../../../stores/spaces/SpaceStore";
 import {
-    getMetaSpaceName,
     MetaSpace,
     UPDATE_HOME_BEHAVIOUR,
     UPDATE_SELECTED_SPACE,
     UPDATE_TOP_LEVEL_SPACES,
 } from "../../../../stores/spaces";
 import { RoomListView } from "../../../views/rooms/RoomListPanel/RoomListView";
-
-const META_SPACE_CHIPS = [MetaSpace.Home, MetaSpace.People, MetaSpace.Orphans];
 
 interface IProps {
     onOpenSearch: () => void;
@@ -43,10 +40,10 @@ export default function MobileChatsScreen({ onOpenSearch, onOpenSettings, onCrea
     const allRoomsInHome = useEventEmitterState(spaceStore, UPDATE_HOME_BEHAVIOUR, () => spaceStore.allRoomsInHome);
     const topLevelSpaces = useEventEmitterState(spaceStore, UPDATE_TOP_LEVEL_SPACES, () => spaceStore.spacePanelSpaces);
     const spaceChips = [
-        ...META_SPACE_CHIPS.map((key) => ({
-            key,
-            label: getMetaSpaceName(key, key === MetaSpace.Home ? allRoomsInHome : false),
-        })),
+        {
+            key: MetaSpace.Home,
+            label: allRoomsInHome ? _t("common|home") : _t("common|all_chats"),
+        },
         ...topLevelSpaces.map((space) => ({
             key: space.roomId,
             label: space.name || space.roomId,

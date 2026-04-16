@@ -42,10 +42,14 @@ import {
 import { KnownMembership } from "matrix-js-sdk/src/types";
 import { logger } from "matrix-js-sdk/src/logger";
 import { type CallState, type MatrixCall } from "matrix-js-sdk/src/webrtc/call";
+import VideoCallIcon from "@vector-im/compound-design-tokens/assets/web/icons/video-call-solid";
+import VoiceCallIcon from "@vector-im/compound-design-tokens/assets/web/icons/voice-call-solid";
+import RoomInfoIcon from "@vector-im/compound-design-tokens/assets/web/icons/info-solid";
 import { throttle } from "lodash";
 import { CryptoEvent } from "matrix-js-sdk/src/crypto-api";
 import { type ViewRoomOpts } from "@matrix-org/react-sdk-module-api/lib/lifecycles/RoomViewLifecycle";
 import { type RoomViewProps } from "@element-hq/element-web-module-api";
+import { IconButton } from "@vector-im/compound-web";
 import {
     EncryptionEventView,
     RoomStatusBarView,
@@ -142,6 +146,7 @@ import { type RoomViewStore } from "../../stores/RoomViewStore.tsx";
 import { RoomStatusBarViewModel } from "../../viewmodels/room/RoomStatusBar.ts";
 import { EncryptionEventViewModel } from "../../viewmodels/room/timeline/event-tile/EncryptionEventViewModel.ts";
 import { ModuleApi } from "../../modules/Api.ts";
+import { useRoomCall } from "../../hooks/room/useRoomCall.tsx";
 
 const DEBUG = false;
 const PREVENT_MULTIPLE_JITSI_WITHIN = 30_000;
@@ -192,6 +197,11 @@ interface IRoomProps extends RoomViewProps {
      */
     mobileRightPanelMode?: "overlay";
 
+    /*
+     * If true, render compact mobile header actions inside the room shell.
+     */
+    showMobileHeaderActions?: boolean;
+
     /**
      * If true, hide the pinned messages banner
      */
@@ -211,6 +221,55 @@ interface IRoomProps extends RoomViewProps {
 }
 
 export { MainSplitContentType };
+
+function MobileRoomHeaderActions({ room }: { room: Room | LocalRoom }): JSX.Element | null {
+    const {
+        videoCallDisabledReason,
+        videoCallClick,
+        voiceCallDisabledReason,
+        voiceCallClick,
+        callOptions,
+        showVideoCallButton,
+        showVoiceCallButton,
+    } = useRoomCall(room);
+
+    if (!showVideoCallButton && !showVoiceCallButton) {
+        return null;
+    }
+
+    return (
+        <div className="mx_MobileRoomHeaderActions" data-testid="mx_MobileRoomHeaderActions">
+            {showVoiceCallButton && (
+                <IconButton
+                    size="32px"
+                    disabled={!!voiceCallDisabledReason}
+                    aria-label={voiceCallDisabledReason ?? _t("voip|voice_call")}
+                    onClick={(event) => voiceCallClick(event, callOptions[0])}
+                >
+                    <VoiceCallIcon />
+                </IconButton>
+            )}
+            {showVideoCallButton && (
+                <IconButton
+                    size="32px"
+                    disabled={!!videoCallDisabledReason}
+                    aria-label={videoCallDisabledReason ?? _t("voip|video_call")}
+                    onClick={(event) => videoCallClick(event, callOptions[0])}
+                >
+                    <VideoCallIcon />
+                </IconButton>
+            )}
+            <IconButton
+                size="32px"
+                aria-label={_t("right_panel|room_summary_card|title")}
+                data-testid="mx_MobileRoomHeaderInfoButton"
+                onClick={() => RightPanelStore.instance.showOrHidePhase(RightPanelPhases.RoomSummary)}
+            >
+                <RoomInfoIcon />
+            </IconButton>
+        </div>
+    );
+}
 
 export interface IRoomState {
     room?: Room;
@@ -2773,6 +2832,9 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                                 ref={this.roomViewBody}
                                 data-layout={this.state.layout}
                             >
+                                {this.props.showMobileHeaderActions && this.state.room && (
+                                    <MobileRoomHeaderActions room={this.state.room} />
+                                )}
                                 {!this.props.hideHeader && (
                                     <RoomHeader
                                         room={this.state.room}
@@ -2786,6 +2848,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                         {rightPanelAsOverlay && rightPanel && (
                             <div
                                 className="mx_RoomView_mobileRightPanelOverlay"
+                                data-testid="mx_MobileRoomInfoOverlay"
                                 style={{
                                     position: "absolute",
                                     inset: 0,

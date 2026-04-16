@@ -48,7 +48,10 @@ describe("<MobileChatsScreen />", () => {
 
         expect(screen.getByRole("button", { name: "Space Alpha" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Space Beta" })).toBeInTheDocument();
-        expect(screen.getByTestId("mx_MobileSpaceChips").querySelectorAll("button")).toHaveLength(5);
+        expect(screen.getByRole("button", { name: "All Chats" })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "People" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Other rooms" })).not.toBeInTheDocument();
+        expect(screen.getByTestId("mx_MobileSpaceChips").querySelectorAll("button")).toHaveLength(3);
     });
 
     it("switches the active space when a user-created space chip is pressed", () => {

@@ -20,7 +20,6 @@ import NotificationsIcon from "@vector-im/compound-design-tokens/assets/web/icon
 import SettingsIcon from "@vector-im/compound-design-tokens/assets/web/icons/settings";
 import ChatIcon from "@vector-im/compound-design-tokens/assets/web/icons/chat";
 import ChevronLeftIcon from "@vector-im/compound-design-tokens/assets/web/icons/chevron-left";
-import InfoIcon from "@vector-im/compound-design-tokens/assets/web/icons/info-solid";
 
 import PageTypes from "../../../PageTypes";
 import dis from "../../../dispatcher/dispatcher";
@@ -30,14 +29,14 @@ import NotificationPanel from "../NotificationPanel";
 import { UserSettingsView } from "../../views/dialogs/UserSettingsDialog";
 import { type SdkContextClass } from "../../../contexts/SDKContext";
 import MobileChatsScreen from "./screens/MobileChatsScreen";
-import { RightPanelPhases } from "../../../stores/right-panel/RightPanelStorePhases";
 import { UPDATE_EVENT } from "../../../stores/AsyncStore";
 
 type Destination = "chats" | "notifications" | "settings";
-type ViewState = Destination | "room" | "room-info";
+type ViewState = Destination | "room";
 type MobileRoomPageElementProps = {
     hideHeader?: boolean;
     mobileRightPanelMode?: "overlay";
+    showMobileHeaderActions?: boolean;
 };
 
 interface IProps {
@@ -50,63 +49,52 @@ export default function MobileLoggedInView({ pageType, pageElement, sdkContext }
     const isRoomViewPage = pageType === PageTypes.RoomView;
     const isRoomPage = isRoomViewPage || pageType === PageTypes.UserView;
     const [viewState, setViewState] = useState<ViewState>(isRoomPage ? "room" : "chats");
+    const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false);
     const currentRoomId = isRoomViewPage ? sdkContext.roomViewStore.getRoomId() : null;
     const currentRoom = currentRoomId ? sdkContext.client?.getRoom(currentRoomId) : null;
     const roomName = currentRoom?.name || _t("common|unnamed_room");
 
     useEffect(() => {
         if (isRoomPage) {
-            setViewState((currentViewState) => (currentViewState === "room-info" ? currentViewState : "room"));
+            setViewState("room");
         } else {
-            setViewState((currentViewState) =>
-                currentViewState === "room" || currentViewState === "room-info" ? "chats" : currentViewState,
-            );
+            setViewState((currentViewState) => (currentViewState === "room" ? "chats" : currentViewState));
+            setIsRoomInfoOpen(false);
         }
     }, [isRoomPage]);
 
     const onBackToChats = useCallback(() => {
-        dis.dispatch({ action: Action.ViewHomePage });
-    }, []);
-
-    const onOpenRoomInfo = useCallback(() => {
-        if (!currentRoomId) {
+        if (currentRoomId && isRoomInfoOpen) {
+            sdkContext.rightPanelStore.hide(currentRoomId);
             return;
         }
-
-        sdkContext.rightPanelStore.setCard({ phase: RightPanelPhases.RoomSummary, state: {} }, true, currentRoomId);
-        setViewState("room-info");
-    }, [currentRoomId, sdkContext]);
-
-    const onBackFromRoomInfo = useCallback(() => {
-        if (currentRoomId) {
-            sdkContext.rightPanelStore.hide(currentRoomId);
-        }
-        setViewState("room");
-    }, [currentRoomId, sdkContext]);
+        dis.dispatch({ action: Action.ViewHomePage });
+    }, [currentRoomId, isRoomInfoOpen, sdkContext]);
 
     useEffect(() => {
         if (!currentRoomId) {
+            setIsRoomInfoOpen(false);
             return;
         }
 
         const onRightPanelUpdate = (): void => {
-            if (viewState === "room-info" && !sdkContext.rightPanelStore.isOpenForRoom(currentRoomId)) {
-                setViewState("room");
-            }
+            setIsRoomInfoOpen(sdkContext.rightPanelStore.isOpenForRoom(currentRoomId));
         };
 
+        onRightPanelUpdate();
         sdkContext.rightPanelStore.on(UPDATE_EVENT, onRightPanelUpdate);
 
         return () => {
             sdkContext.rightPanelStore.off(UPDATE_EVENT, onRightPanelUpdate);
         };
-    }, [currentRoomId, sdkContext, viewState]);
+    }, [currentRoomId, sdkContext]);
 
     const mobileRoomPageElement =
         isRoomViewPage && isValidElement(pageElement)
             ? cloneElement(pageElement as ReactElement<MobileRoomPageElementProps>, {
                   hideHeader: true,
                   mobileRightPanelMode: "overlay",
+                  showMobileHeaderActions: true,
               })
             : pageElement;
 
@@ -126,38 +114,27 @@ export default function MobileLoggedInView({ pageType, pageElement, sdkContext }
         );
     } else if (viewState === "settings") {
         content = (
-            <div className="mx_MobileShell_screen mx_MobileShell_screen--stack" data-testid="mx_MobileSettingsScreen">
+            <div
+                className="mx_MobileShell_screen mx_MobileShell_screen--settings"
+                data-testid="mx_MobileSettingsScreen"
+            >
                 <UserSettingsView embedded={true} onFinished={() => setViewState("chats")} sdkContext={sdkContext} />
             </div>
         );
-    } else if (viewState === "room" || viewState === "room-info") {
+    } else if (viewState === "room") {
         content = (
-            <div
-                className="mx_MobileShell_screen mx_MobileShell_screen--room"
-                data-testid={viewState === "room-info" ? "mx_MobileRoomInfoScreen" : "mx_MobileRoomScreen"}
-            >
+            <div className="mx_MobileShell_screen mx_MobileShell_screen--room" data-testid="mx_MobileRoomScreen">
                 <div className="mx_MobileShell_roomBackBar" data-testid="mx_MobileShell_roomBackBar">
                     <button
                         type="button"
                         className="mx_MobileShell_iconButton"
                         aria-label={_t("action|back")}
                         data-testid="mx_MobileShell_backButton"
-                        onClick={viewState === "room-info" ? onBackFromRoomInfo : onBackToChats}
+                        onClick={onBackToChats}
                     >
                         <ChevronLeftIcon />
                     </button>
                     <div className="mx_MobileShell_title">{roomName}</div>
-                    {viewState === "room" && currentRoomId && (
-                        <button
-                            type="button"
-                            className="mx_MobileShell_iconButton"
-                            aria-label={_t("right_panel|room_summary_card|title")}
-                            data-testid="mx_MobileShell_roomInfoButton"
-                            onClick={onOpenRoomInfo}
-                        >
-                            <InfoIcon />
-                        </button>
-                    )}
                 </div>
                 {mobileRoomPageElement}
             </div>
@@ -186,11 +163,12 @@ export default function MobileLoggedInView({ pageType, pageElement, sdkContext }
         { id: "settings", label: settingsLabel, Icon: SettingsIcon },
     ];
 
-    const showBottomNav = viewState !== "room" && viewState !== "room-info";
+    const showBottomNav = viewState !== "room";
+    const showAppBar = showBottomNav && viewState !== "chats";
 
     return (
         <div className="mx_MobileShell" data-testid="mx_MobileShell">
-            {showBottomNav && (
+            {showAppBar && (
                 <header className="mx_MobileShell_appBar">
                     <div className="mx_MobileShell_title">{title}</div>
                 </header>
