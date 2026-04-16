@@ -12,10 +12,18 @@ import { type CallFeed } from "matrix-js-sdk/src/webrtc/callFeed";
 import { SDPStreamMetadataPurpose } from "matrix-js-sdk/src/webrtc/callEventTypes";
 
 import LegacyCallView from "../../../../../src/components/views/voip/LegacyCallView";
+import dis from "../../../../../src/dispatcher/dispatcher";
+import { Action } from "../../../../../src/dispatcher/actions";
+import LegacyCallHandler from "../../../../../src/LegacyCallHandler";
 import { stubClient } from "../../../../test-utils";
 import DMRoomMap from "../../../../../src/utils/DMRoomMap";
+import * as mobileWebShell from "../../../../../src/utils/device/mobileWebShell";
 
 describe("LegacyCallView", () => {
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
     it("should exit full screen on unmount", () => {
         const element = document.createElement("div");
         // @ts-expect-error
@@ -33,6 +41,8 @@ describe("LegacyCallView", () => {
             isMicrophoneMuted: jest.fn().mockReturnValue(false),
             isLocalVideoMuted: jest.fn().mockReturnValue(false),
             isScreensharing: jest.fn().mockReturnValue(false),
+            noIncomingFeeds: jest.fn().mockReturnValue(false),
+            opponentSupportsSDPStreamMetadata: jest.fn().mockReturnValue(true),
         } as unknown as MatrixCall;
 
         const { unmount } = render(<LegacyCallView call={call} sidebarShown={false} />);
@@ -93,6 +103,8 @@ describe("LegacyCallView", () => {
             isMicrophoneMuted: jest.fn().mockReturnValue(false),
             isLocalVideoMuted: jest.fn().mockReturnValue(false),
             isScreensharing: jest.fn().mockReturnValue(false),
+            noIncomingFeeds: jest.fn().mockReturnValue(true),
+            opponentSupportsSDPStreamMetadata: jest.fn().mockReturnValue(true),
         } as unknown as MatrixCall;
         DMRoomMap.setShared({
             getUserIdForRoomId: jest.fn().mockReturnValue("test-user"),
@@ -100,5 +112,39 @@ describe("LegacyCallView", () => {
 
         const { container } = render(<LegacyCallView call={call} sidebarShown={false} pipMode={true} />);
         expect(container.querySelector(".mx_LegacyCallViewButtons_button_sidebar")).toBeFalsy();
+    });
+
+    it("uses room navigation instead of fullscreen when maximizing in mobile shell", () => {
+        stubClient();
+        jest.spyOn(mobileWebShell, "isMobileWebShellEnabled").mockReturnValue(true);
+
+        const dispatchSpy = jest.spyOn(dis, "dispatch");
+        jest.spyOn(LegacyCallHandler.instance, "roomIdForCall").mockReturnValue("!room:example.org");
+
+        const call = {
+            on: jest.fn(),
+            removeListener: jest.fn(),
+            getFeeds: jest.fn().mockReturnValue([]),
+            isLocalOnHold: jest.fn().mockReturnValue(false),
+            isRemoteOnHold: jest.fn().mockReturnValue(false),
+            isMicrophoneMuted: jest.fn().mockReturnValue(false),
+            isLocalVideoMuted: jest.fn().mockReturnValue(false),
+            isScreensharing: jest.fn().mockReturnValue(false),
+            noIncomingFeeds: jest.fn().mockReturnValue(true),
+            opponentSupportsSDPStreamMetadata: jest.fn().mockReturnValue(true),
+        } as unknown as MatrixCall;
+
+        const { container } = render(<LegacyCallView call={call} sidebarShown={false} />);
+        const maximizeButton = container.querySelector(".mx_LegacyCallViewHeader_button") as HTMLButtonElement | null;
+        expect(maximizeButton).not.toBeNull();
+
+        maximizeButton?.click();
+
+        expect(dispatchSpy).toHaveBeenCalledWith({
+            action: Action.ViewRoom,
+            room_id: "!room:example.org",
+            view_call: false,
+            metricsTrigger: undefined,
+        });
     });
 });

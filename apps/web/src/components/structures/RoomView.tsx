@@ -2614,6 +2614,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                     resizeNotifier={this.context.resizeNotifier}
                     replyToEvent={this.state.replyToEvent}
                     permalinkCreator={this.permalinkCreator}
+                    collapseButtonsToMenu={Boolean(this.props.showMobileHeaderActions)}
                 />
             );
         }

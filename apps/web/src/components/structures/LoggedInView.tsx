@@ -845,7 +845,7 @@ class LoggedInView extends React.Component<IProps, IState> {
                     <ToastContainer />
                     <div className={bodyClasses}>{content}</div>
                 </div>
-                <PipContainer />
+                {!mobileShellEnabled && <PipContainer />}
                 <NonUrgentToastContainer />
                 {audioFeedArraysForCalls}
             </MatrixClientContextProvider>

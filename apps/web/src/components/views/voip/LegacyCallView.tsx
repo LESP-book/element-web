@@ -18,6 +18,8 @@ import dis from "../../../dispatcher/dispatcher";
 import LegacyCallHandler from "../../../LegacyCallHandler";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
 import { _t, _td } from "../../../languageHandler";
+import { Action } from "../../../dispatcher/actions";
+import SdkConfig from "../../../SdkConfig";
 import VideoFeed from "./VideoFeed";
 import RoomAvatar from "../avatars/RoomAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
@@ -28,6 +30,7 @@ import LegacyCallViewButtons from "./LegacyCallView/LegacyCallViewButtons";
 import { type ActionPayload } from "../../../dispatcher/payloads";
 import { getKeyBindingsManager } from "../../../KeyBindingsManager";
 import { KeyBindingAction } from "../../../accessibility/KeyboardShortcuts";
+import { isMobileWebShellEnabled } from "../../../utils/device/mobileWebShell";
 
 interface IProps {
     // The call for us to display
@@ -247,6 +250,26 @@ export default class LegacyCallView extends React.Component<IProps, IState> {
     }
 
     private onMaximizeClick = (): void => {
+        const mobileShellEnabled =
+            typeof window !== "undefined" &&
+            isMobileWebShellEnabled(
+                { mobile_web_shell_enabled: Boolean(SdkConfig.get("mobile_web_shell_enabled")) },
+                window,
+            );
+
+        if (mobileShellEnabled) {
+            const roomId = LegacyCallHandler.instance.roomIdForCall(this.props.call);
+            if (roomId) {
+                dis.dispatch({
+                    action: Action.ViewRoom,
+                    room_id: roomId,
+                    view_call: false,
+                    metricsTrigger: undefined,
+                });
+                return;
+            }
+        }
+
         dis.dispatch({
             action: "video_fullscreen",
             fullscreen: true,

@@ -128,6 +128,27 @@ describe("MessageComposerButtons", () => {
         expect(getButtonLabels()).toEqual(["Emoji", "More options", ["Attachment", "Sticker", "Poll", "Location"]]);
     });
 
+    it("Collapses all actions into overflow menu when explicitly requested", async () => {
+        wrapAndRender(
+            <MessageComposerButtons
+                {...mockProps}
+                collapseToOverflowMenu={true}
+                isMenuOpen={true}
+                showLocationButton={true}
+                showPollsButton={true}
+                showStickersButton={true}
+            />,
+            false,
+        );
+
+        await waitFor(() => {
+            expect(getButtonLabels()).toEqual([
+                "More options",
+                ["Emoji", "Attachment", "Sticker", "Poll", "Location"],
+            ]);
+        });
+    });
+
     describe("polls button", () => {
         it("should render when asked to", () => {
             wrapAndRender(

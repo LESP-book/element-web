@@ -46,6 +46,7 @@ import { useScopedRoomContext } from "../../../contexts/ScopedRoomContext.tsx";
 
 interface IProps {
     addEmoji: (emoji: string) => boolean;
+    collapseToOverflowMenu?: boolean;
     haveRecording: boolean;
     isMenuOpen: boolean;
     isStickerPickerOpen: boolean;
@@ -67,6 +68,8 @@ export const OverflowMenuContext = createContext<OverflowMenuCloser | null>(null
 const MessageComposerButtons: React.FC<IProps> = (props: IProps) => {
     const matrixClient = useContext(MatrixClientContext);
     const { room, narrow } = useScopedRoomContext("room", "narrow");
+    const collapseToOverflowMenu = props.collapseToOverflowMenu ?? false;
+    const useNarrowActionLayout = narrow || collapseToOverflowMenu;
 
     const isWysiwygLabEnabled = useSettingValue("feature_wysiwyg_composer");
 
@@ -76,7 +79,7 @@ const MessageComposerButtons: React.FC<IProps> = (props: IProps) => {
 
     let mainButtons: ReactNode[];
     let moreButtons: ReactNode[];
-    if (narrow) {
+    if (useNarrowActionLayout) {
         mainButtons = [
             isWysiwygLabEnabled ? (
                 <ComposerModeButton
@@ -91,7 +94,7 @@ const MessageComposerButtons: React.FC<IProps> = (props: IProps) => {
         moreButtons = [
             uploadButton(), // props passed via UploadButtonContext
             showStickersButton(props),
-            voiceRecordingButton(props, narrow),
+            voiceRecordingButton(props, useNarrowActionLayout),
             props.showPollsButton ? pollButton(room, props.relation) : null,
             showLocationButton(props, room, matrixClient),
         ];
@@ -110,10 +113,15 @@ const MessageComposerButtons: React.FC<IProps> = (props: IProps) => {
         ];
         moreButtons = [
             showStickersButton(props),
-            voiceRecordingButton(props, narrow),
+            voiceRecordingButton(props, useNarrowActionLayout),
             props.showPollsButton ? pollButton(room, props.relation) : null,
             showLocationButton(props, room, matrixClient),
         ];
+    }
+
+    if (collapseToOverflowMenu) {
+        moreButtons = [...mainButtons, ...moreButtons];
+        mainButtons = [];
     }
 
     mainButtons = filterBoolean(mainButtons);

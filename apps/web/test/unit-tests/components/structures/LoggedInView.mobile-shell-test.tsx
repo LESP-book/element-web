@@ -20,6 +20,9 @@ import PageTypes from "../../../../src/PageTypes";
 jest.mock("../../../../src/components/structures/HomePage", () => () => <div>Mock Home Page</div>);
 jest.mock("../../../../src/components/structures/LeftPanel", () => () => <div>Mock Left Panel</div>);
 jest.mock("../../../../src/components/views/spaces/SpacePanel", () => () => <div>Mock Space Panel</div>);
+jest.mock("../../../../src/components/structures/PipContainer", () => ({
+    PipContainer: () => <div data-testid="mx_PipContainerMock" />,
+}));
 jest.mock("../../../../src/components/structures/RoomView", () => ({
     RoomView: () => <div>Mock Room View</div>,
 }));
@@ -94,5 +97,6 @@ describe("<LoggedInView /> mobile shell", () => {
         expect(screen.getByTestId("mx_MobileChatsScreen")).toBeInTheDocument();
         expect(screen.getByTestId("mx_MobileShell_nav_chats")).toBeInTheDocument();
         expect(container.querySelector("#lp-resizer")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("mx_PipContainerMock")).not.toBeInTheDocument();
     });
 });

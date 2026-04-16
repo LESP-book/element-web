@@ -85,6 +85,7 @@ interface IProps extends MatrixClientProps {
     replyToEvent?: MatrixEvent;
     relation?: IEventRelation;
     e2eStatus?: E2EStatus;
+    collapseButtonsToMenu?: boolean;
     compact?: boolean;
 }
 
@@ -688,6 +689,7 @@ export class MessageComposer extends React.Component<IProps, IState> {
                             {canSendMessages && (
                                 <MessageComposerButtons
                                     addEmoji={this.addEmoji}
+                                    collapseToOverflowMenu={this.props.collapseButtonsToMenu}
                                     haveRecording={this.state.haveRecording}
                                     isMenuOpen={this.state.isMenuOpen}
                                     isStickerPickerOpen={this.state.isStickerPickerOpen}
