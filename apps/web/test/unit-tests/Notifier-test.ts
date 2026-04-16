@@ -79,6 +79,9 @@ describe("Notifier", () => {
     let mockSettings: Record<string, boolean> = {};
 
     const userId = "@bob:example.org";
+    const originalMatchMedia = window.matchMedia;
+    const originalSecureContext = Object.getOwnPropertyDescriptor(window, "isSecureContext");
+    const originalServiceWorker = Object.getOwnPropertyDescriptor(window.navigator, "serviceWorker");
 
     const emitLiveEvent = (event: MatrixEvent): void => {
         mockClient!.emit(RoomEvent.Timeline, event, testRoom, false, false, {
@@ -163,6 +166,28 @@ describe("Notifier", () => {
 
         // @ts-ignore
         Notifier.backgroundAudio.audioContext = mockAudioContext;
+    });
+
+    afterEach(() => {
+        window.matchMedia = originalMatchMedia;
+
+        if (originalSecureContext) {
+            Object.defineProperty(window, "isSecureContext", originalSecureContext);
+        } else {
+            Object.defineProperty(window, "isSecureContext", {
+                configurable: true,
+                value: undefined,
+            });
+        }
+
+        if (originalServiceWorker) {
+            Object.defineProperty(window.navigator, "serviceWorker", originalServiceWorker);
+        } else {
+            Object.defineProperty(window.navigator, "serviceWorker", {
+                configurable: true,
+                value: undefined,
+            });
+        }
     });
 
     describe("triggering notification from events", () => {
@@ -733,6 +758,51 @@ describe("Notifier", () => {
         it("should persist by default", () => {
             Notifier.setPromptHidden(true);
             expect(localStorage.getItem("notifications_hidden")).toBeTruthy();
+        });
+    });
+
+    describe("standalone notification runtime", () => {
+        const mockDisplayMode = (standalone: boolean): void => {
+            window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+                matches: standalone && query === "(display-mode: standalone)",
+                media: query,
+                onchange: null,
+                addEventListener: jest.fn(),
+                removeEventListener: jest.fn(),
+                addListener: jest.fn(),
+                removeListener: jest.fn(),
+                dispatchEvent: jest.fn(),
+            }));
+        };
+
+        it("rejects standalone notifications when the service worker runtime is unavailable", () => {
+            mockDisplayMode(true);
+            Object.defineProperty(window, "isSecureContext", {
+                configurable: true,
+                value: true,
+            });
+            Object.defineProperty(window.navigator, "serviceWorker", {
+                configurable: true,
+                value: undefined,
+            });
+
+            expect(Notifier.supportsDesktopNotifications()).toBe(false);
+            expect(Notifier.isPossible()).toBe(false);
+        });
+
+        it("keeps browser notifications available outside standalone mode", () => {
+            mockDisplayMode(false);
+            Object.defineProperty(window, "isSecureContext", {
+                configurable: true,
+                value: true,
+            });
+            Object.defineProperty(window.navigator, "serviceWorker", {
+                configurable: true,
+                value: undefined,
+            });
+
+            expect(Notifier.supportsDesktopNotifications()).toBe(true);
+            expect(Notifier.isPossible()).toBe(true);
         });
     });
 

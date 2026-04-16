@@ -187,6 +187,11 @@ interface IRoomProps extends RoomViewProps {
      */
     hideRightPanel?: boolean;
 
+    /*
+     * When set, render the right panel as an in-room mobile overlay instead of a split pane.
+     */
+    mobileRightPanelMode?: "overlay";
+
     /**
      * If true, hide the pinned messages banner
      */
@@ -2632,7 +2637,10 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         }
 
         const showRightPanel =
-            !this.props.hideRightPanel && !isRoomEncryptionLoading && this.state.room && this.state.showRightPanel;
+            !isRoomEncryptionLoading &&
+            this.state.room &&
+            this.state.showRightPanel &&
+            (this.props.mobileRightPanelMode === "overlay" || !this.props.hideRightPanel);
 
         const rightPanel = showRightPanel ? (
             <RightPanel
@@ -2645,6 +2653,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                 searchTerm={this.state.search?.term ?? ""}
             />
         ) : undefined;
+        const rightPanelAsOverlay = this.props.mobileRightPanelMode === "overlay";
 
         const timelineClasses = classNames("mx_RoomView_timeline", {
             mx_RoomView_timeline_rr_enabled: this.state.showReadReceipts,
@@ -2747,13 +2756,14 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                     onKeyDown={this.onReactKeyDown}
                     onFocus={this.onFocus}
                     tabIndex={-1}
+                    style={rightPanelAsOverlay ? { position: "relative" } : undefined}
                 >
                     {showChatEffects && this.roomView.current && (
                         <EffectsOverlay roomWidth={this.roomView.current.offsetWidth} />
                     )}
                     <ErrorBoundary>
                         <MainSplit
-                            panel={rightPanel}
+                            panel={rightPanelAsOverlay ? undefined : rightPanel}
                             sizeKey={sizeKey}
                             defaultSize={defaultSize}
                             analyticsRoomType={analyticsRoomType}
@@ -2773,6 +2783,21 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                                 {mainSplitBody}
                             </div>
                         </MainSplit>
+                        {rightPanelAsOverlay && rightPanel && (
+                            <div
+                                className="mx_RoomView_mobileRightPanelOverlay"
+                                style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    zIndex: 20,
+                                    display: "flex",
+                                    overflow: "hidden",
+                                    background: "var(--cpd-color-bg-canvas-default)",
+                                }}
+                            >
+                                <div style={{ display: "flex", flex: 1, minWidth: 0, minHeight: 0 }}>{rightPanel}</div>
+                            </div>
+                        )}
                     </ErrorBoundary>
                 </div>
             </ScopedRoomContextProvider>

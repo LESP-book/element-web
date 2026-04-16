@@ -24,6 +24,7 @@ import { UPDATE_EVENT } from "../../stores/AsyncStore";
 import { SdkContextClass } from "../../contexts/SDKContext";
 import RoomAvatar from "../views/avatars/RoomAvatar";
 import { WidgetPipViewModel, type Props as WidgetPipViewModelProps } from "../../viewmodels/room/WidgetPipViewModel";
+import { isMobileWebShellEnabled } from "../../utils/device/mobileWebShell";
 
 const SHOW_CALL_IN_STATES = [
     CallState.Connected,
@@ -52,6 +53,16 @@ interface IState {
     persistentWidgetId: string | null;
     persistentRoomId: string | null;
     showWidgetInPip: boolean;
+}
+
+const MOBILE_PIP_CONFIG = { mobile_web_shell_enabled: true } as const;
+
+function shouldUseMobilePipLayout(): boolean {
+    if (typeof window === "undefined") {
+        return false;
+    }
+
+    return isMobileWebShellEnabled(MOBILE_PIP_CONFIG, window);
 }
 
 // Splits a list of calls into one 'primary' one and a list
@@ -233,34 +244,40 @@ class PipContainerInner extends React.Component<IProps, IState> {
 
     public render(): ReactNode {
         const pipMode = true;
+        const mobilePipLayout = shouldUseMobilePipLayout();
+        const pipContentClassName = mobilePipLayout
+            ? "mx_PipContainer_content mx_PipContainer_content--mobile"
+            : "mx_PipContainer_content";
         const pipContent: Array<CreatePipChildren> = [];
 
         if (this.state.primaryCall) {
             // get a ref to call inside the current scope
             const call = this.state.primaryCall;
             pipContent.push(({ onStartMoving, onResize }) => (
-                <LegacyCallView
-                    key="call-view"
-                    onMouseDownOnHeader={onStartMoving}
-                    call={call}
-                    secondaryCall={this.state.secondaryCall}
-                    pipMode={pipMode}
-                    onResize={onResize}
-                    sidebarShown={false}
-                />
+                <div key="call-view" className={pipContentClassName}>
+                    <LegacyCallView
+                        onMouseDownOnHeader={onStartMoving}
+                        call={call}
+                        secondaryCall={this.state.secondaryCall}
+                        pipMode={pipMode}
+                        onResize={onResize}
+                        sidebarShown={false}
+                    />
+                </div>
             ));
         }
 
         if (this.state.showWidgetInPip && this.state.persistentWidgetId) {
             pipContent.push(({ onStartMoving }) => (
-                <WidgetPipWrappedView
-                    key="widget-pip"
-                    widgetId={this.state.persistentWidgetId!}
-                    room={MatrixClientPeg.safeGet().getRoom(this.state.persistentRoomId ?? undefined)!}
-                    viewingRoom={this.state.viewedRoomId === this.state.persistentRoomId}
-                    onStartMoving={onStartMoving}
-                    movePersistedElement={this.props.movePersistedElement}
-                />
+                <div key="widget-pip" className={pipContentClassName}>
+                    <WidgetPipWrappedView
+                        widgetId={this.state.persistentWidgetId!}
+                        room={MatrixClientPeg.safeGet().getRoom(this.state.persistentRoomId ?? undefined)!}
+                        viewingRoom={this.state.viewedRoomId === this.state.persistentRoomId}
+                        onStartMoving={onStartMoving}
+                        movePersistedElement={this.props.movePersistedElement}
+                    />
+                </div>
             ));
         }
 

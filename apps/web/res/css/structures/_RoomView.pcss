@@ -294,3 +294,81 @@ Please see LICENSE files in the repository root for full details.
         min-height: 42px;
     }
 }
+
+@media (max-width: 767px) {
+    :root {
+        --RoomView_MessageList-padding: 14px;
+    }
+
+    .mx_RoomView_body .mx_RoomView_timeline {
+        margin-right: 0;
+    }
+
+    .mx_RoomView_messagePanel,
+    .mx_RoomView_timeline {
+        min-inline-size: 0;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .mx_RoomView .mx_MessageComposer {
+        padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    }
+
+    .mx_RoomView .mx_MessageComposer_wrapper {
+        padding-left: 16px;
+        padding-right: 12px;
+    }
+
+    .mx_RoomView .mx_MessageComposer_row {
+        align-items: flex-end;
+        gap: 8px;
+    }
+
+    .mx_RoomView .mx_MessageComposer_input {
+        min-height: 52px;
+        margin-right: 0;
+    }
+
+    .mx_RoomView .mx_MessageComposer_sendMessage,
+    .mx_RoomView .mx_MessageComposer_button,
+    .mx_RoomView .mx_MessageComposer_buttonMenu {
+        min-inline-size: 44px;
+        min-block-size: 44px;
+        touch-action: manipulation;
+    }
+
+    .mx_RoomView .mx_MessageComposer_button,
+    .mx_RoomView .mx_MessageComposer_buttonMenu {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        padding: 10px;
+        border-radius: 999px;
+    }
+
+    .mx_RoomView .mx_MessageComposer_button svg,
+    .mx_RoomView .mx_MessageComposer_buttonMenu svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .mx_RoomView .mx_EventTile_mediaLine,
+    .mx_RoomView .mx_MediaBody,
+    .mx_RoomView .mx_MImageBody,
+    .mx_RoomView .mx_MImageBody_thumbnail_container,
+    .mx_RoomView .mx_MImageBody_thumbnail,
+    .mx_RoomView .mx_EventTile_body img,
+    .mx_RoomView .mx_EventTile_body video {
+        max-inline-size: 100%;
+    }
+
+    .mx_RoomView .mx_EventTile_body img,
+    .mx_RoomView .mx_EventTile_body video,
+    .mx_RoomView .mx_MImageBody_thumbnail {
+        block-size: auto;
+        object-fit: contain;
+    }
+}

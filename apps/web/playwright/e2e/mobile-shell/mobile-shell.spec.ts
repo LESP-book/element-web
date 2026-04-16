@@ -75,6 +75,8 @@ test.describe("Mobile shell", () => {
         await app.viewRoomByName(ROOM_NAMES[0]);
 
         await expect(page.getByTestId("mx_MobileRoomScreen")).toBeVisible();
+        await expect(page.getByTestId("mx_MobileShell_roomBackBar")).toContainText(ROOM_NAMES[0]);
+        await expect(page.getByTestId("mx_MobileShell_roomInfoButton")).toBeVisible();
         await expect(page.getByTestId("mx_MobileShell_bottomNav")).toHaveCount(0);
         await expect(app.getComposer()).toBeVisible();
 
@@ -84,6 +86,29 @@ test.describe("Mobile shell", () => {
         await expect(page.getByText("mobile shell smoke test")).toBeVisible();
 
         await expectNoHorizontalOverflow(page.getByTestId("mx_MobileRoomScreen"));
+    });
+
+    test("navigates between the mobile room timeline, room details, and the chats list", async ({ page, app }) => {
+        await app.viewRoomByName(ROOM_NAMES[1]);
+
+        await expect(page.getByTestId("mx_MobileRoomScreen")).toBeVisible();
+        await page.getByTestId("mx_MobileShell_roomInfoButton").click();
+
+        const roomInfoOverlay = page.locator(".mx_RoomView_mobileRightPanelOverlay:visible");
+        const rightPanel = roomInfoOverlay.getByTestId("right-panel");
+        await expect(page.getByTestId("mx_MobileRoomInfoScreen")).toBeVisible();
+        await expect(roomInfoOverlay).toBeVisible();
+        await expect(rightPanel).toBeVisible();
+        await expect(rightPanel).toContainText(ROOM_NAMES[1]);
+        await expect(rightPanel).toContainText("People");
+
+        await page.getByTestId("mx_MobileShell_backButton").click();
+        await expect(page.getByTestId("mx_MobileRoomScreen")).toBeVisible();
+        await expect(page.getByTestId("right-panel")).toHaveCount(0);
+
+        await page.getByTestId("mx_MobileShell_backButton").click();
+        await expect(page.getByTestId("mx_MobileChatsScreen")).toBeVisible();
+        await expect(page.getByTestId("mx_MobileShell_bottomNav")).toBeVisible();
     });
 
     test("renders settings as a single-column mobile screen", async ({ page }) => {

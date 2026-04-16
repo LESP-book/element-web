@@ -14,14 +14,16 @@ import { OwnProfileStore } from "../../../../stores/OwnProfileStore";
 import { UPDATE_EVENT } from "../../../../stores/AsyncStore";
 import { useEventEmitterState } from "../../../../hooks/useEventEmitter";
 import SpaceStore from "../../../../stores/spaces/SpaceStore";
-import { MetaSpace, UPDATE_SELECTED_SPACE } from "../../../../stores/spaces";
+import {
+    getMetaSpaceName,
+    MetaSpace,
+    UPDATE_HOME_BEHAVIOUR,
+    UPDATE_SELECTED_SPACE,
+    UPDATE_TOP_LEVEL_SPACES,
+} from "../../../../stores/spaces";
 import { RoomListView } from "../../../views/rooms/RoomListPanel/RoomListView";
 
-const SPACE_CHIPS = [
-    { key: MetaSpace.Home, label: _t("common|all_chats") },
-    { key: MetaSpace.People, label: _t("common|people") },
-    { key: MetaSpace.Orphans, label: _t("common|rooms") },
-];
+const META_SPACE_CHIPS = [MetaSpace.Home, MetaSpace.People, MetaSpace.Orphans];
 
 interface IProps {
     onOpenSearch: () => void;
@@ -37,11 +39,19 @@ export default function MobileChatsScreen({ onOpenSearch, onOpenSettings, onCrea
         displayName: ownProfileStore.displayName || _t("settings|account|title"),
         avatarUrl: ownProfileStore.getHttpAvatarUrl(40),
     }));
-    const activeSpace = useEventEmitterState(
-        spaceStore,
-        UPDATE_SELECTED_SPACE,
-        () => spaceStore.activeSpace,
-    );
+    const activeSpace = useEventEmitterState(spaceStore, UPDATE_SELECTED_SPACE, () => spaceStore.activeSpace);
+    const allRoomsInHome = useEventEmitterState(spaceStore, UPDATE_HOME_BEHAVIOUR, () => spaceStore.allRoomsInHome);
+    const topLevelSpaces = useEventEmitterState(spaceStore, UPDATE_TOP_LEVEL_SPACES, () => spaceStore.spacePanelSpaces);
+    const spaceChips = [
+        ...META_SPACE_CHIPS.map((key) => ({
+            key,
+            label: getMetaSpaceName(key, key === MetaSpace.Home ? allRoomsInHome : false),
+        })),
+        ...topLevelSpaces.map((space) => ({
+            key: space.roomId,
+            label: space.name || space.roomId,
+        })),
+    ];
 
     return (
         <div className="mx_MobileChatsScreen" data-testid="mx_MobileChatsScreen">
@@ -72,7 +82,7 @@ export default function MobileChatsScreen({ onOpenSearch, onOpenSettings, onCrea
             </header>
 
             <div className="mx_MobileChatsScreen_spaceChips" data-testid="mx_MobileSpaceChips">
-                {SPACE_CHIPS.map((chip) => (
+                {spaceChips.map((chip) => (
                     <button
                         key={chip.key}
                         type="button"

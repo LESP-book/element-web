@@ -55,6 +55,7 @@ const TEXT_MESSAGE_TYPES = new Set(["m.text", "m.notice", "m.emote"]);
 let db: IDBDatabase | null = null;
 let dbName: string | null = null;
 let maxEventAgeMs = DEFAULT_MAX_EVENT_AGE_DAYS * DAY_MS;
+let pendingLiveEvents: IEventAndProfile[] = [];
 
 function encodeKeyPart(value: string): string {
     return encodeURIComponent(value).replace(/%/g, "_");
@@ -108,11 +109,9 @@ async function openDb(name: string): Promise<IDBDatabase> {
                 const store = database.createObjectStore("events", { keyPath: "event_id" });
                 store.createIndex("room_id", "room_id", { unique: false });
                 store.createIndex("room_ts", ["room_id", "origin_server_ts", "event_id"], { unique: false });
-                store.createIndex(
-                    "room_msgtype_ts",
-                    ["room_id", "msgtype", "origin_server_ts", "event_id"],
-                    { unique: false },
-                );
+                store.createIndex("room_msgtype_ts", ["room_id", "msgtype", "origin_server_ts", "event_id"], {
+                    unique: false,
+                });
             }
 
             if (!database.objectStoreNames.contains("checkpoints")) {
@@ -178,38 +177,15 @@ async function initEventIndex(userId: string, deviceId: string): Promise<void> {
     const name = buildDbName(userId, deviceId);
     if (db && dbName === name) return;
     db?.close();
-    db = await openDb(name);
     dbName = name;
+    db = await openDb(name);
 }
 
 async function addEventToIndex(ev: IEventWithRoomId, profile: IMatrixProfile): Promise<void> {
     if (!ev.event_id) return;
     const cutoffTs = getCutoffTs();
     if (isEventTooOld(ev, cutoffTs)) return;
-
-    const database = ensureDb();
-    const tx = database.transaction("events", "readwrite");
-    const store = tx.objectStore("events");
-
-    const content = (ev as any).content ?? {};
-    const msgtype = ev.type === "m.room.message" ? content.msgtype ?? null : null;
-    const body = extractBody(ev) ?? "";
-
-    await addRecord(store, {
-        event_id: ev.event_id,
-        room_id: ev.room_id,
-        sender: ev.sender,
-        origin_server_ts: ev.origin_server_ts ?? 0,
-        type: ev.type,
-        msgtype,
-        body,
-        body_lower: body.toLowerCase(),
-        has_url: hasUrl(content),
-        event_json: JSON.stringify(ev),
-        profile_json: JSON.stringify(profile ?? {}),
-    });
-
-    await transactionDone(tx);
+    pendingLiveEvents.push({ event: ev, profile });
 }
 
 async function deleteEvent(eventId: string): Promise<boolean> {
@@ -241,7 +217,43 @@ async function isRoomIndexed(roomId: string): Promise<boolean> {
 }
 
 async function commitLiveEvents(): Promise<void> {
-    return;
+    if (!pendingLiveEvents.length) return;
+
+    const events = pendingLiveEvents;
+    const cutoffTs = getCutoffTs();
+    const database = ensureDb();
+    const tx = database.transaction("events", "readwrite");
+    const store = tx.objectStore("events");
+
+    const insertPromises: Array<Promise<boolean>> = [];
+    for (const item of events) {
+        if (!item.event.event_id) continue;
+        if (isEventTooOld(item.event, cutoffTs)) continue;
+
+        const content = (item.event as any).content ?? {};
+        const msgtype = item.event.type === "m.room.message" ? (content.msgtype ?? null) : null;
+        const body = extractBody(item.event) ?? "";
+
+        insertPromises.push(
+            addRecord(store, {
+                event_id: item.event.event_id,
+                room_id: item.event.room_id,
+                sender: item.event.sender,
+                origin_server_ts: item.event.origin_server_ts ?? 0,
+                type: item.event.type,
+                msgtype,
+                body,
+                body_lower: body.toLowerCase(),
+                has_url: hasUrl(content),
+                event_json: JSON.stringify(item.event),
+                profile_json: JSON.stringify(item.profile ?? {}),
+            }),
+        );
+    }
+
+    await Promise.all(insertPromises);
+    await transactionDone(tx);
+    pendingLiveEvents = [];
 }
 
 function parseNextBatch(nextBatch?: string): { key?: IDBValidKey; count?: number; exhausted?: boolean } {
@@ -309,7 +321,11 @@ async function buildContext(
     profile: IMatrixProfile,
     beforeLimit: number,
     afterLimit: number,
-): Promise<{ events_before: IEventWithRoomId[]; events_after: IEventWithRoomId[]; profile_info: Record<string, IMatrixProfile> }> {
+): Promise<{
+    events_before: IEventWithRoomId[];
+    events_after: IEventWithRoomId[];
+    profile_info: Record<string, IMatrixProfile>;
+}> {
     const roomId = event.room_id;
     const ts = event.origin_server_ts ?? 0;
     const eventId = event.event_id;
@@ -466,7 +482,7 @@ async function addHistoricEvents(
         if (!item.event.event_id) continue;
         if (isEventTooOld(item.event, cutoffTs)) continue;
         const content = (item.event as any).content ?? {};
-        const msgtype = item.event.type === "m.room.message" ? content.msgtype ?? null : null;
+        const msgtype = item.event.type === "m.room.message" ? (content.msgtype ?? null) : null;
         const body = extractBody(item.event) ?? "";
         insertPromises.push(
             addRecord(eventsStore, {
@@ -650,6 +666,7 @@ async function setUserVersion(version: number): Promise<void> {
 async function deleteEventIndex(): Promise<void> {
     db?.close();
     db = null;
+    pendingLiveEvents = [];
 
     if (!dbName) return;
 
@@ -660,6 +677,50 @@ async function deleteEventIndex(): Promise<void> {
         request.onblocked = () => resolve();
     });
     dbName = null;
+}
+
+function isRecoverableDbError(error: unknown): boolean {
+    if (!(error instanceof Error) && !(error instanceof DOMException)) return false;
+    const name = error.name ?? "";
+    const message = error.message ?? "";
+    return (
+        name === "AbortError" ||
+        name === "InvalidStateError" ||
+        name === "NotFoundError" ||
+        name === "UnknownError" ||
+        name === "VersionError" ||
+        /corrupt|corrupted|malformed|invalid\s+state/i.test(message)
+    );
+}
+
+async function rebuildEventIndex(): Promise<void> {
+    if (!dbName) {
+        throw new Error("Event index database name is unknown");
+    }
+
+    db?.close();
+    db = null;
+
+    await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(dbName!);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => resolve();
+    });
+
+    db = await openDb(dbName);
+}
+
+async function invokeHandler(name: string, args: any[]): Promise<any> {
+    const handler = handlers[name];
+    if (!handler) {
+        throw new Error(`Unknown handler: ${name}`);
+    }
+    return handler(...args);
+}
+
+function canRetryWithRecovery(name: string): boolean {
+    return name !== "supportsEventIndexing" && name !== "closeEventIndex" && name !== "deleteEventIndex";
 }
 
 const handlers: Record<string, (...args: any[]) => Promise<any>> = {
@@ -686,15 +747,23 @@ const handlers: Record<string, (...args: any[]) => Promise<any>> = {
 
 ctx.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
     const { id, name, args } = event.data;
-    const handler = handlers[name];
-    if (!handler) {
-        ctx.postMessage({ id, error: `Unknown handler: ${name}` } as WorkerResponse);
-        return;
-    }
     try {
-        const reply = await handler(...args);
+        const reply = await invokeHandler(name, args);
         ctx.postMessage({ id, reply } as WorkerResponse);
     } catch (e) {
+        if (canRetryWithRecovery(name) && isRecoverableDbError(e)) {
+            try {
+                await rebuildEventIndex();
+                const reply = await invokeHandler(name, args);
+                ctx.postMessage({ id, reply } as WorkerResponse);
+                return;
+            } catch (retryError) {
+                const error = retryError instanceof Error ? retryError.message : String(retryError);
+                ctx.postMessage({ id, error } as WorkerResponse);
+                return;
+            }
+        }
+
         const error = e instanceof Error ? e.message : String(e);
         ctx.postMessage({ id, error } as WorkerResponse);
     }

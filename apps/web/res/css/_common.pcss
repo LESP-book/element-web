@@ -118,6 +118,7 @@ body {
     /* see https://github.com/vector-im/element-web/issues/11425 */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
 }
 
 pre,
@@ -250,6 +251,16 @@ summary {
 legend {
     padding-inline: unset;
     border: none;
+}
+
+@media (pointer: coarse) {
+    button,
+    [role="button"],
+    input,
+    select,
+    textarea {
+        touch-action: manipulation;
+    }
 }
 
 /* .mx_textinput is a container for a text input */

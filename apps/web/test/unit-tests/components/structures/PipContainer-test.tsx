@@ -63,6 +63,8 @@ jest.mock("../../../../src/stores/OwnProfileStore", () => ({
 describe("PipContainer", () => {
     useMockedCalls();
     jest.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => {});
+    const originalMatchMedia = window.matchMedia;
+    const originalInnerWidth = globalThis.innerWidth;
 
     let user: UserEvent;
     let sdkContext: TestSdkContext;
@@ -119,6 +121,8 @@ describe("PipContainer", () => {
         cleanup();
         await Promise.all([CallStore.instance, WidgetMessagingStore.instance].map(resetAsyncStoreWithClient));
         client.reEmitter.stopReEmitting(room, [RoomStateEvent.Events]);
+        window.matchMedia = originalMatchMedia;
+        Object.defineProperty(globalThis, "innerWidth", { configurable: true, value: originalInnerWidth });
         jest.clearAllMocks();
     });
 
@@ -265,5 +269,25 @@ describe("PipContainer", () => {
         });
 
         WidgetStore.instance.removeVirtualWidget("1", room.roomId);
+    });
+
+    it("uses the compact mobile PiP wrapper on mobile-shell viewports", async () => {
+        Object.defineProperty(globalThis, "innerWidth", { configurable: true, value: 390 });
+        window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+            matches: query === "(pointer: coarse)",
+            media: query,
+            onchange: null,
+            addEventListener: jest.fn(),
+            removeEventListener: jest.fn(),
+            addListener: jest.fn(),
+            removeListener: jest.fn(),
+            dispatchEvent: jest.fn(),
+        }));
+
+        renderPip();
+
+        await withCall(async () => {
+            expect(document.querySelector(".mx_PipContainer_content--mobile")).not.toBeNull();
+        });
     });
 });

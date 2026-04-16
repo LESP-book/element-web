@@ -1,8 +1,15 @@
 .mx_MobileShell {
+    --mx-mobile-shell-safe-area-top: env(safe-area-inset-top, 0px);
+    --mx-mobile-shell-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --mx-mobile-shell-keyboard-inset: env(keyboard-inset-height, 0px);
+    --mx-mobile-shell-bottom-nav-height: 72px;
+    --mx-mobile-shell-bottom-clearance: calc(max(12px, var(--mx-mobile-shell-safe-area-bottom)) + var(--mx-mobile-shell-keyboard-inset));
+
     position: relative;
     display: flex;
     flex-direction: column;
     block-size: 100%;
+    min-block-size: 100vh;
     min-block-size: 100dvh;
     overflow: hidden;
     background: var(--cpd-color-bg-canvas-default);
@@ -17,7 +24,7 @@
     align-items: center;
     justify-content: space-between;
     min-block-size: 56px;
-    padding: max(8px, env(safe-area-inset-top)) 16px 8px;
+    padding: max(8px, var(--mx-mobile-shell-safe-area-top)) 16px 8px;
     background: var(--cpd-color-bg-subtle-primary);
     border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
 }
@@ -53,8 +60,9 @@
     display: flex;
     flex: 1;
     min-block-size: 0;
-    padding-bottom: calc(72px + max(12px, env(safe-area-inset-bottom)));
+    padding-bottom: calc(var(--mx-mobile-shell-bottom-nav-height) + var(--mx-mobile-shell-bottom-clearance));
     overflow: hidden;
+    overscroll-behavior: none;
 }
 
 .mx_MobileShell_content__room {
@@ -78,8 +86,23 @@
     padding-bottom: 0;
 }
 
+.mx_MobileShell_roomBackBar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-block-size: 48px;
+    padding: max(4px, var(--mx-mobile-shell-safe-area-top)) 8px 4px;
+    background: var(--cpd-color-bg-canvas-default);
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+    flex-shrink: 0;
+}
+
 .mx_MobileShell_screen--room {
     overflow: hidden;
+    overscroll-behavior: contain;
 }
 
 .mx_MobileShell_screen--room,
@@ -106,7 +129,37 @@
 }
 
 .mx_MobileShell_screen--room .mx_MessageComposer {
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-bottom: calc(max(12px, var(--mx-mobile-shell-safe-area-bottom)) + var(--mx-mobile-shell-keyboard-inset));
+    scroll-margin-bottom: calc(16px + var(--mx-mobile-shell-keyboard-inset));
+}
+
+.mx_MobileShell_screen--room .mx_RoomView_messagePanel,
+.mx_MobileShell_screen--room .mx_RoomView_timeline,
+.mx_MobileChatsScreen_list,
+.mx_MobileChatsScreen_spaceChips {
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.mx_MobileShell_screen--room .mx_RoomView_messagePanel {
+    scroll-padding-bottom: calc(96px + var(--mx-mobile-shell-keyboard-inset));
+}
+
+.mx_MobileShell_screen--room .mx_EventTile_mediaLine,
+.mx_MobileShell_screen--room .mx_MediaBody,
+.mx_MobileShell_screen--room .mx_MImageBody,
+.mx_MobileShell_screen--room .mx_MImageBody_thumbnail_container,
+.mx_MobileShell_screen--room .mx_MImageBody_thumbnail,
+.mx_MobileShell_screen--room .mx_EventTile_body img,
+.mx_MobileShell_screen--room .mx_EventTile_body video {
+    max-inline-size: 100%;
+}
+
+.mx_MobileShell_screen--room .mx_EventTile_body img,
+.mx_MobileShell_screen--room .mx_EventTile_body video,
+.mx_MobileShell_screen--room .mx_MImageBody_thumbnail {
+    block-size: auto;
+    object-fit: contain;
 }
 
 .mx_MobileShell_bottomNav {
@@ -118,7 +171,7 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
-    padding: 8px 12px calc(8px + max(12px, env(safe-area-inset-bottom)));
+    padding: 8px 12px calc(8px + max(12px, var(--mx-mobile-shell-safe-area-bottom)));
     background: color-mix(in srgb, var(--cpd-color-bg-canvas-default) 92%, transparent);
     border-top: 1px solid var(--cpd-color-border-interactive-secondary);
     backdrop-filter: blur(16px);
@@ -335,6 +388,12 @@
 
 .mx_UserSettingsView .mx_SettingsDialog_toastContainer {
     position: sticky;
-    bottom: max(12px, env(safe-area-inset-bottom));
+    bottom: max(12px, var(--mx-mobile-shell-safe-area-bottom));
     z-index: 4;
+}
+
+@supports (height: 100dvh) {
+    .mx_MobileShell {
+        min-block-size: 100dvh;
+    }
 }

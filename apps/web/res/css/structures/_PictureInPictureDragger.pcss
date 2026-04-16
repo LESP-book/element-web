@@ -13,8 +13,63 @@ Please see LICENSE files in the repository root for full details.
     top: 0;
     /* Display above any widget elements */
     z-index: 102;
+    max-inline-size: calc(100vw - 24px);
+    max-block-size: calc(100vh - 24px);
+    touch-action: none;
 }
 
 .mx_PictureInPictureDragger:active {
     cursor: grabbing;
+}
+
+.mx_PictureInPictureDragger .mx_PipContainer_content {
+    max-inline-size: min(calc(100vw - 24px), 336px);
+}
+
+@supports (height: 100dvh) {
+    .mx_PictureInPictureDragger {
+        max-block-size: calc(100dvh - 24px);
+    }
+}
+
+@media (max-width: 767px) {
+    .mx_PictureInPictureDragger {
+        max-inline-size: calc(100vw - 20px);
+        max-block-size: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 88px);
+    }
+
+    @supports (height: 100dvh) {
+        .mx_PictureInPictureDragger {
+            max-block-size: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 88px);
+        }
+    }
+
+    .mx_PictureInPictureDragger .mx_PipContainer_content--mobile {
+        inline-size: min(40vw, 216px);
+        min-inline-size: 156px;
+        max-inline-size: calc(100vw - 20px);
+    }
+
+    .mx_PictureInPictureDragger .mx_PipContainer_content--mobile .mx_LegacyCallView_pip {
+        inline-size: 100%;
+        max-inline-size: 100%;
+        padding-bottom: 6px;
+        border-radius: 18px;
+    }
+
+    .mx_PictureInPictureDragger .mx_PipContainer_content--mobile .mx_LegacyCallView_pip .mx_LegacyCallView_content {
+        min-height: min(28vh, 152px);
+    }
+
+    .mx_PictureInPictureDragger .mx_PipContainer_content--mobile .mx_LegacyCallViewButtons {
+        bottom: 10px;
+    }
+
+    .mx_PictureInPictureDragger .mx_PipContainer_content--mobile [data-testid="widget-pip-container"] {
+        inline-size: 100%;
+        max-inline-size: 100%;
+        block-size: min(30vh, 240px);
+        padding: 10px;
+        border-radius: 20px;
+    }
 }

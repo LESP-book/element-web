@@ -19,7 +19,12 @@ import {
     type ISearchResults,
 } from "matrix-js-sdk/src/matrix";
 
-import { RoomSearchView } from "../../../../src/components/structures/RoomSearchView";
+import {
+    buildSnippet,
+    mergeSearchResults,
+    renderHighlightedText,
+    RoomSearchView,
+} from "../../../../src/components/structures/RoomSearchView";
 import { clientAndSDKContextRenderOptions, stubClient } from "../../../test-utils";
 import MatrixClientContext from "../../../../src/contexts/MatrixClientContext";
 import { MatrixClientPeg } from "../../../../src/MatrixClientPeg";
@@ -126,9 +131,10 @@ describe("<RoomSearchView/>", () => {
             clientAndSDKContextRenderOptions(client, sdkContext),
         );
 
-        await screen.findByText("Before");
         await screen.findByText("Foo Test Bar");
-        await screen.findByText("After");
+        expect(screen.getByText("Room: !room:server")).toBeInTheDocument();
+        expect(screen.queryByText("Before")).not.toBeInTheDocument();
+        expect(screen.queryByText("After")).not.toBeInTheDocument();
     });
 
     it("should highlight words correctly", async () => {
@@ -172,7 +178,7 @@ describe("<RoomSearchView/>", () => {
         expect(text).toHaveClass("mx_EventTile_searchHighlight");
     });
 
-    it("should show spinner above results when backpaginating", async () => {
+    it("should show a spinner while the initial search is still in progress", async () => {
         const searchResults: ISearchResults = {
             results: [
                 SearchResult.fromJson(
@@ -241,7 +247,7 @@ describe("<RoomSearchView/>", () => {
         );
 
         await screen.findByRole("progressbar");
-        await screen.findByText("Potato");
+        await screen.findByText((_, element) => element?.textContent === "Foo Test Bar");
         expect(onUpdate).toHaveBeenCalledWith(false, expect.objectContaining({}), null);
 
         rerender(
@@ -330,7 +336,7 @@ describe("<RoomSearchView/>", () => {
         expect(onUpdate).toHaveBeenCalledTimes(2);
     });
 
-    it("should combine search results when the query is present in multiple sucessive messages", async () => {
+    it("should render distinct result snippets without duplicating context lines", async () => {
         const searchResults: ISearchResults = {
             results: [
                 SearchResult.fromJson(
@@ -425,21 +431,16 @@ describe("<RoomSearchView/>", () => {
             clientAndSDKContextRenderOptions(client, sdkContext),
         );
 
-        const beforeNode = await screen.findByText("Before");
         const fooNode = await screen.findByText("Foo");
-        const betweenNode = await screen.findByText("Between");
         const foo2Node = await screen.findByText("Foo2");
-        const afterNode = await screen.findByText("After");
 
-        expect((await screen.findAllByText("Between")).length).toBe(1);
-
-        expect(beforeNode.compareDocumentPosition(fooNode) == Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(fooNode.compareDocumentPosition(betweenNode) == Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(betweenNode.compareDocumentPosition(foo2Node) == Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(foo2Node.compareDocumentPosition(afterNode) == Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(screen.queryByText("Before")).not.toBeInTheDocument();
+        expect(screen.queryByText("Between")).not.toBeInTheDocument();
+        expect(screen.queryByText("After")).not.toBeInTheDocument();
+        expect(fooNode.compareDocumentPosition(foo2Node) === Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    it("should pass appropriate permalink creator for all rooms search", async () => {
+    it("should render room group headings and jump buttons for all rooms search", async () => {
         await SettingsStore.setValue("alwaysShowTimestamps", null, SettingLevel.DEVICE, true);
         const room2 = new Room("!room2:server", client, client.getSafeUserId());
         const room3 = new Room("!room3:server", client, client.getSafeUserId());
@@ -540,28 +541,80 @@ describe("<RoomSearchView/>", () => {
             clientAndSDKContextRenderOptions(client, sdkContext),
         );
 
-        const event1 = await screen.findByText("Room 1");
-        expect(event1.closest(".mx_EventTile_line")!.querySelector("a")).toHaveAttribute(
-            "href",
-            `https://matrix.to/#/${room.roomId}/$2`,
+        expect(await screen.findByText(`Room: ${room.roomId}`)).toBeInTheDocument();
+        expect(screen.getAllByText(`Room: ${room2.roomId}`)).toHaveLength(2);
+        expect(screen.getByText(`Room: ${room3.roomId}`)).toBeInTheDocument();
+        expect(screen.getAllByRole("button", { name: "View in room" })).toHaveLength(4);
+    });
+
+    it("deduplicates merged results and sorts them by recency", () => {
+        const older = SearchResult.fromJson(
+            {
+                rank: 1,
+                result: {
+                    room_id: room.roomId,
+                    event_id: "$older",
+                    sender: client.getSafeUserId(),
+                    origin_server_ts: 10,
+                    content: { body: "Older", msgtype: "m.text" },
+                    type: EventType.RoomMessage,
+                },
+                context: { profile_info: {}, events_before: [], events_after: [] },
+            },
+            eventMapper,
+        );
+        const newer = SearchResult.fromJson(
+            {
+                rank: 1,
+                result: {
+                    room_id: room.roomId,
+                    event_id: "$newer",
+                    sender: client.getSafeUserId(),
+                    origin_server_ts: 20,
+                    content: { body: "Newer", msgtype: "m.text" },
+                    type: EventType.RoomMessage,
+                },
+                context: { profile_info: {}, events_before: [], events_after: [] },
+            },
+            eventMapper,
         );
 
-        const event2 = await screen.findByText("Room 2");
-        expect(event2.closest(".mx_EventTile_line")!.querySelector("a")).toHaveAttribute(
-            "href",
-            `https://matrix.to/#/${room2.roomId}/$22`,
+        const merged = mergeSearchResults(
+            { results: [older], highlights: ["test"], count: 1 },
+            { results: [newer, older], highlights: ["test"], count: 2 },
         );
 
-        const event2Message2 = await screen.findByText("Room 2 message 2");
-        expect(event2Message2.closest(".mx_EventTile_line")!.querySelector("a")).toHaveAttribute(
-            "href",
-            `https://matrix.to/#/${room2.roomId}/$23`,
+        expect(merged.results.map((result) => result.context.getEvent().getId())).toEqual(["$newer", "$older"]);
+        expect(merged.count).toBe(2);
+    });
+
+    it("builds snippets around the first highlight match", () => {
+        expect(buildSnippet("alpha beta gamma delta epsilon zeta eta theta iota kappa lambda", ["epsilon"])).toEqual({
+            snippet: "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+            prefixEllipsis: false,
+            suffixEllipsis: false,
+        });
+
+        expect(
+            buildSnippet("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen", [
+                "thirteen",
+            ]),
+        ).toEqual(
+            expect.objectContaining({
+                snippet: expect.stringContaining("thirteen"),
+                prefixEllipsis: true,
+                suffixEllipsis: false,
+            }),
+        );
+    });
+
+    it("renders highlighted text without turning html-like content into markup", () => {
+        const { container } = render(
+            <div>{renderHighlightedText('prefix <img src=x onerror="boom"> suffix', ["suffix"])}</div>,
         );
 
-        const event3 = await screen.findByText("Room 3");
-        expect(event3.closest(".mx_EventTile_line")!.querySelector("a")).toHaveAttribute(
-            "href",
-            `https://matrix.to/#/${room3.roomId}/$32`,
-        );
+        expect(container.querySelector("img")).toBeNull();
+        expect(screen.getByText("suffix")).toHaveClass("mx_EventTile_searchHighlight");
+        expect(container.textContent).toContain('<img src=x onerror="boom">');
     });
 });

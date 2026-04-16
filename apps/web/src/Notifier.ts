@@ -81,6 +81,22 @@ const msgTypeHandlers: Record<string, (event: MatrixEvent) => string | null> = {
     },
 };
 
+function isStandaloneDisplayMode(): boolean {
+    try {
+        return window.matchMedia?.("(display-mode: standalone)")?.matches ?? false;
+    } catch {
+        return false;
+    }
+}
+
+function hasPwaNotificationRuntime(): boolean {
+    if (!isStandaloneDisplayMode()) {
+        return true;
+    }
+
+    return window.isSecureContext && typeof navigator.serviceWorker !== "undefined";
+}
+
 /**
  * Extracts plain text from a message body, replacing any spoilered content
  * with '[Spoiler]' to prevent spoilers in desktop notifications.
@@ -301,7 +317,7 @@ class NotifierClass extends TypedEventEmitter<keyof EmittedEvents, EmittedEvents
     }
 
     public supportsDesktopNotifications(): boolean {
-        return PlatformPeg.get()?.supportsNotifications() ?? false;
+        return (PlatformPeg.get()?.supportsNotifications() ?? false) && hasPwaNotificationRuntime();
     }
 
     public setEnabled(enable: boolean, callback?: () => void): void {
@@ -374,6 +390,12 @@ class NotifierClass extends TypedEventEmitter<keyof EmittedEvents, EmittedEvents
         const plaf = PlatformPeg.get();
         if (!plaf?.supportsNotifications()) return false;
         if (!plaf.maySendNotifications()) return false;
+        if (!hasPwaNotificationRuntime()) {
+            logger.warn(
+                "Notifications are unavailable in standalone mode without a secure-context service worker runtime",
+            );
+            return false;
+        }
 
         return true; // possible, but not necessarily enabled
     }
