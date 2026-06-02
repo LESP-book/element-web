@@ -3,20 +3,20 @@
 exports[`Pill > renders the pill 1`] = `
 <div>
   <div
-    class="flex pill"
+    class="Flex-module_flex Pill-module_pill"
     style="--mx-flex-display: inline-flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: start; --mx-flex-gap: var(--cpd-space-1-5x); --mx-flex-wrap: nowrap;"
   >
     <div
       style="width: 20px; height: 20px; border-radius: 100%; background-color: rgb(204, 204, 204);"
     />
     <span
-      class="label"
-      id="_r_0_"
+      class="Pill-module_label"
+      id="react-use-id-1"
     >
       Pill
     </span>
     <button
-      aria-describedby="_r_0_"
+      aria-describedby="react-use-id-1"
       aria-label="Delete"
       class="_icon-button_1215g_8 mx_Dialog_nonDialogButton"
       data-kind="primary"
@@ -48,15 +48,15 @@ exports[`Pill > renders the pill 1`] = `
 exports[`Pill > renders the pill without close button 1`] = `
 <div>
   <div
-    class="flex pill"
+    class="Flex-module_flex Pill-module_pill"
     style="--mx-flex-display: inline-flex; --mx-flex-direction: row; --mx-flex-align: center; --mx-flex-justify: start; --mx-flex-gap: var(--cpd-space-1-5x); --mx-flex-wrap: nowrap;"
   >
     <div
       style="width: 20px; height: 20px; border-radius: 100%; background-color: rgb(204, 204, 204);"
     />
     <span
-      class="label"
-      id="_r_1_"
+      class="Pill-module_label"
+      id="react-use-id-1"
     >
       Pill
     </span>

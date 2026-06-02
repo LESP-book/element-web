@@ -23,20 +23,25 @@
     }
 }
 
+/* When type=border, we just render a 1px border */
+.separator[data-separator-type="border"] {
+    border-right: 1px solid var(--cpd-color-bg-subtle-primary);
+}
+
+/* When type=bar, we render the 12px separator */
+.separator[data-separator-type="bar"] {
+    border-right: 1px solid var(--cpd-color-bg-subtle-primary);
+}
+
 .separator[data-separator="hover"],
 .separator[data-separator="active"],
+.separator[data-separator-type="bar"][data-separator="hover"],
 .separator:focus-visible {
     background: var(--cpd-color-bg-action-tertiary-hovered);
 }
 
 .separator[data-separator="hover"] svg,
 .separator[data-separator="active"] svg,
-.separator:focus-visible svg,
-.visible svg {
+.separator:focus-visible svg {
     opacity: 1;
-}
-
-.visible {
-    width: 12px;
-    border-right: 1px solid var(--cpd-color-bg-subtle-primary);
 }

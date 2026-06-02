@@ -15,8 +15,7 @@
         "room_name": "Rum %(name)s",
         "room_status_bar": "Rumsstatusfält",
         "seek_bar_label": "Förloppsfält för ljud",
-        "unread_messages": "Olästa meddelanden.",
-        "user_menu": "Användarmeny"
+        "unread_messages": "Olästa meddelanden."
     },
     "a11y_jump_first_unread_room": "Hoppa till första olästa rum.",
     "action": {
@@ -98,7 +97,6 @@
         "rename": "Döp om",
         "reply": "Svara",
         "reply_in_thread": "Svara i tråd",
-        "report_content": "Anmäl innehåll",
         "report_room": "Anmäl rum",
         "resend": "Skicka igen",
         "reset": "Återställ",
@@ -341,7 +339,6 @@
         "sign_in_instead_prompt": "Logga in istället",
         "sign_in_or_register": "Logga in eller skapa konto",
         "sign_in_or_register_description": "Använd ditt konto eller skapa ett nytt för att fortsätta.",
-        "sign_in_prompt": "Har du ett konto? <a>Logga in</a>",
         "sign_in_with_sso": "Logga in med samlad inloggning",
         "signing_in": "Loggar in …",
         "soft_logout": {
@@ -855,7 +852,6 @@
         "thread_root_id": "Trådroots-ID: %(threadRootId)s",
         "threads_timeline": "Trådtidslinje",
         "title": "Utvecklarverktyg",
-        "toggle_event": "växla händelse",
         "toolbox": "Verktygslåda",
         "use_at_own_risk": "Det här UI:t kontrollerar inte typer för värden. Använd på egen risk.",
         "user_read_up_to": "Användaren har läst fram till: ",
@@ -1490,11 +1486,6 @@
         "notifications": "Aktivera aviseringspanelen i rumshuvudet",
         "render_reaction_images": "Återge anpassade bilder i reaktioner",
         "render_reaction_images_description": "Ibland kallat för ”anpassade emojis”.",
-        "report_to_moderators": "Rapportera till moderatorer",
-        "report_to_moderators_description": "I rum som stöder moderering så låter \"Rapportera\"-knappen dig rapportera trakasseri till rumsmoderatorer.",
-        "share_history_on_invite": "Dela encrypted historik med nya medlemmar",
-        "share_history_on_invite_description": "När du bjuder in en användare till ett krypterat rum där historiksynlighet är inställd på \"delad\" så delar du krypterad historik med den användaren och du accepterar krypterad historik när du blir inbjuden till ett sådant rum.",
-        "share_history_on_invite_warning": "Den här funktionen är EXPERIMENTELL och alla säkerhetsåtgärder är inte implementerade. Aktivera inte på produktionskonton.",
         "sliding_sync": "Sliding sync-läge",
         "sliding_sync_description": "Under aktiv utveckling, kan inte inaktiveras.",
         "sliding_sync_disabled_notice": "Logga ut och in igen för att inaktivera",
@@ -1728,7 +1719,6 @@
         "restricted": "Begränsad"
     },
     "powered_by_matrix": "Drivs av Matrix",
-    "powered_by_matrix_with_logo": "Decentraliserad krypterad chatt &amp; samarbete som drivs av $matrixLogo",
     "presence": {
         "away": "Borta",
         "busy": "Upptagen",
@@ -1762,25 +1752,10 @@
     },
     "report_content": {
         "description": "Att rapportera det här meddelandet kommer att skicka dess unika 'händelse-ID' till administratören för din hemserver. Om meddelanden i det här rummet är krypterade kommer din hemserveradministratör inte att kunna läsa meddelandetexten eller se några filer eller bilder.",
-        "disagree": "Håll inte med",
-        "error_create_room_moderation_bot": "Kunde inte skapa rum med modereringsbot",
         "hide_messages_from_user": "Bocka i om du vill dölja alla nuvarande och framtida meddelanden från den här användaren.",
         "ignore_user": "Ignorera användare",
-        "illegal_content": "Olagligt innehåll",
         "missing_reason": "Vänligen fyll i varför du anmäler.",
-        "nature": "Välj en art och beskriv vad som gör detta meddelande kränkande.",
-        "nature_disagreement": "Vad användaren skriver är fel.\nDetta kommer att anmälas till rumsmoderatorerna.",
-        "nature_illegal": "Användaren påvisar olagligt beteende, som att doxa folk eller hota med våld.\nDetta kommer att rapporteras till rumsmoderatorerna som kanske eskalerar detta till juridiska myndigheter.",
-        "nature_nonstandard_admin": "Detta rum är dedikerat till olagligt eller toxiskt innehåll eller moderatorerna misslyckas med att moderera olagligt eller toxiskt innehåll.\nDetta kommer att rapporteras till administratörerna för%(homeserver)s.",
-        "nature_nonstandard_admin_encrypted": "Detta rum är dedikerat till olagligt eller giftigt innehåll eller moderatorerna misslyckas med att moderera olagligt eller toxiskt innehåll.\nDetta kommer att rapporteras till administratörerna för%(homeserver)s. Administratörerna kommer INTE kunna läsa krypterat innehåll i det här rummet.",
-        "nature_other": "Annan orsak. Beskriv problemet tack.\nDetta kommer att rapporteras till rumsmoderatorerna.",
-        "nature_spam": "Användaren spammar rummet med reklam eller länkar till reklam eller propaganda.\nDetta kommer att rapporteras till rumsmoderatorerna.",
-        "nature_toxic": "Den här användaren uppvisar ett stötande beteende, till exempel genom att förolämpa andra användare eller dela vuxenmaterial i familjevänliga rum, eller på annat sätt bryter mot rummets regler.\nDetta kommer att rapporteras till rummets moderatorer.",
-        "other_label": "Annat",
-        "report_content_to_homeserver": "Rapportera innehåll till din hemserveradministratör",
-        "report_entire_room": "Rapportera hela rummet",
-        "spam_or_propaganda": "Spam eller propaganda",
-        "toxic_behaviour": "Stötande beteende"
+        "report_content_to_homeserver": "Rapportera innehåll till din hemserveradministratör"
     },
     "report_room": {
         "description": "Rapportera det här rummet till din hemserveradministratör. Detta skickar rummets unika ID, men om meddelanden är krypterade kan administratören inte läsa dem eller visa delade filer.",
@@ -2141,8 +2116,6 @@
             "aliases_section": "Rumsadresser",
             "avatar_field_label": "Rumsavatar",
             "canonical_alias_field_label": "Huvudadress",
-            "default_url_previews_off": "URL-förhandsgranskning är inaktiverat som förval för deltagare i detta rum.",
-            "default_url_previews_on": "URL-förhandsgranskning är aktiverat som förval för deltagare i detta rum.",
             "description_space": "Redigera inställningar relaterat till ditt utrymme.",
             "error_creating_alias_description": "Ett fel inträffade vid skapande av adressen. Det kanske inte tillåts av servern, eller så inträffade ett tillfälligt fel.",
             "error_creating_alias_title": "Fel vid skapande av adress",
@@ -2171,12 +2144,7 @@
             "published_aliases_explainer_space": "Publicerade adresser kan användas av vem som helst på vilken server som helst för att gå med i ditt utrymme.",
             "published_aliases_section": "Publicerade adresser",
             "save": "Spara ändringar",
-            "topic_field_label": "Rumsämne",
-            "url_preview_encryption_warning": "I krypterade rum, som detta, är URL-förhandsgranskning inaktiverad som förval för att säkerställa att din hemserver (där förhandsgranskningar genereras) inte kan samla information om länkar du ser i rummet.",
-            "url_preview_explainer": "När någon lägger en URL i sitt meddelande, kan URL-förhandsgranskning ge mer information om länken, såsom titel, beskrivning, och en bild från webbplatsen.",
-            "url_previews_section": "URL-förhandsgranskning",
-            "user_url_previews_default_off": "Du har <a>inaktiverat</a> URL-förhandsgranskning som förval.",
-            "user_url_previews_default_on": "Du har <a>aktiverat</a> URL-förhandsgranskning som förval."
+            "topic_field_label": "Rumsämne"
         },
         "notifications": {
             "browse_button": "Bläddra",
@@ -2589,8 +2557,6 @@
             "username": "Användarnamn"
         },
         "inline_url_previews_default": "Aktivera inbäddad URL-förhandsgranskning som standard",
-        "inline_url_previews_room": "Aktivera URL-förhandsgranskning som standard för deltagare i detta rum",
-        "inline_url_previews_room_account": "Aktivera URL-förhandsgranskning för detta rum (påverkar bara dig)",
         "insert_trailing_colon_mentions": "Infoga kolon efter användaromnämnande på början av ett meddelande",
         "invite_controls": {
             "default_label": "Tillåt användare att bjuda in dig till rum"
@@ -3238,7 +3204,6 @@
         "download_action_downloading": "Laddar ner",
         "download_failed": "Nedladdning misslyckades",
         "download_failed_description": "Ett fel uppstod när den här filen laddades ned",
-        "e2e_state": "Tillståndet för end-to-end-krypteringen",
         "edits": {
             "tooltip_label": "Redigerat vid %(date)s. Klicka för att visa redigeringar.",
             "tooltip_sub": "Klicka för att visa redigeringar",
@@ -3320,9 +3285,7 @@
         "m.poll.start": "%(senderName)s har startat en omröstning - %(pollQuestion)s",
         "m.room.avatar": {
             "changed": "%(senderDisplayName)s bytte rummets avatar.",
-            "changed_img": "%(senderDisplayName)s bytte rummets avatar till <img/>",
-            "lightbox_title": "%(senderDisplayName)s bytte avatar för %(roomName)s",
-            "removed": "%(senderDisplayName)s tog bort rummets avatar."
+            "lightbox_title": "%(senderDisplayName)s bytte avatar för %(roomName)s"
         },
         "m.room.canonical_alias": {
             "alt_added": {
@@ -3444,7 +3407,6 @@
             "created_rule_rooms": "%(senderName)s skapade en regel som bannar rum som matchar %(glob)s på grund av %(reason)s",
             "created_rule_servers": "%(senderName)s skapade en regel som bannar servrar som matchar %(glob)s på grund av %(reason)s",
             "created_rule_users": "%(senderName)s skapade en regel som bannar användare som matchar %(glob)s på grund av %(reason)s",
-            "message_hidden": "Du har ignorerat den här användaren, så dess meddelande är dolt. <a>Visa ändå.</a>",
             "removed_rule": "%(senderName)s tog bort en bannregel som matchar %(glob)s",
             "removed_rule_rooms": "%(senderName)s tog bort regeln som bannar rum som matchar %(glob)s",
             "removed_rule_servers": "%(senderName)s tog bort regeln som bannar servrar som matchar %(glob)s",
@@ -3749,12 +3711,6 @@
         "verify_button": "Verifiera användare",
         "verify_explainer": "För extra säkerhet, verifiera den här användaren genom att kolla en engångskod på båda era enheter."
     },
-    "user_menu": {
-        "link_new_device": "Länka ny enhet",
-        "settings": "Alla inställningar",
-        "switch_theme_dark": "Byt till mörkt läge",
-        "switch_theme_light": "Byt till ljust läge"
-    },
     "voip": {
         "already_in_call": "Redan i samtal",
         "already_in_call_person": "Du är redan i ett samtal med den här personen.",
@@ -3849,13 +3805,11 @@
         "user_busy_description": "Användaren du ringde är upptagen.",
         "user_is_presenting": "%(sharerName)s presenterar",
         "video_call": "Videosamtal",
-        "video_call_started": "Videosamtal startat",
         "video_call_using": "Videosamtal med hjälp av:",
         "voice_call": "Röstsamtal",
         "you_are_presenting": "Du presenterar"
     },
     "web_default_device_name": "%(appName)s: %(browserName)s på %(osName)s",
-    "welcome_to_element": "Välkommen till Element",
     "widget": {
         "added_by": "Widget tillagd av",
         "capabilities_dialog": {

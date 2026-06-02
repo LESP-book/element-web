@@ -6,10 +6,11 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "jest-matrix-react";
+import { cleanup, fireEvent, render, screen } from "jest-matrix-react";
 import React from "react";
 import { ClientRendezvousFailureReason, MSC4108FailureReason } from "matrix-js-sdk/src/rendezvous";
 
+import { mockQRCodeRender, resetQRCodeMock, waitForQRCodeRender } from "../../../../../test-utils/qrcode";
 import LoginWithQRFlow from "../../../../../../src/components/views/auth/LoginWithQRFlow";
 import { LoginWithQRFailureReason, type FailureReason } from "../../../../../../src/components/views/auth/LoginWithQR";
 import { Click, Phase } from "../../../../../../src/components/views/auth/LoginWithQR-types";
@@ -31,6 +32,7 @@ describe("<LoginWithQRFlow />", () => {
     beforeEach(() => {});
 
     afterEach(() => {
+        resetQRCodeMock();
         onClick.mockReset();
         cleanup();
     });
@@ -42,18 +44,18 @@ describe("<LoginWithQRFlow />", () => {
 
     it("renders spinner whilst QR generating", async () => {
         const { container } = render(getComponent({ phase: Phase.ShowingQR }));
-        expect(screen.getAllByTestId("cancel-button")).toHaveLength(1);
+        expect(screen.getAllByTestId("spinner")).toHaveLength(1);
         expect(container).toMatchSnapshot();
-        fireEvent.click(screen.getByTestId("cancel-button"));
-        expect(onClick).toHaveBeenCalledWith(Click.Cancel, undefined);
     });
 
     it("renders QR code", async () => {
+        mockQRCodeRender();
         const { container } = render(
             getComponent({ phase: Phase.ShowingQR, code: new TextEncoder().encode("mock-code") }),
         );
         // QR code is rendered async so we wait for it:
-        await waitFor(() => screen.getAllByAltText("QR Code").length === 1);
+        await waitForQRCodeRender();
+        expect(screen.getAllByAltText("QR Code")).toHaveLength(1);
         expect(container).toMatchSnapshot();
     });
 

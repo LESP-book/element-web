@@ -88,7 +88,7 @@ exports[`<ManageRestrictedJoinRuleDialog /> should list spaces which are not par
                   class="_container_153f2_10"
                 >
                   <input
-                    aria-describedby="_r_5_"
+                    aria-describedby="react-use-id-1"
                     class="_input_153f2_18"
                     id="checkbox_vY7Q4uEh9K"
                     type="checkbox"
@@ -120,7 +120,7 @@ exports[`<ManageRestrictedJoinRuleDialog /> should list spaces which are not par
                 >
                   <div>
                     <span
-                      class="_avatar_zysgz_8 mx_BaseAvatar _avatar-imageless_zysgz_55"
+                      class="_avatar_va14e_8 mx_BaseAvatar _avatar-imageless_va14e_55"
                       data-color="1"
                       data-testid="avatar-img"
                       data-type="round"
@@ -138,7 +138,7 @@ exports[`<ManageRestrictedJoinRuleDialog /> should list spaces which are not par
                 </label>
                 <span
                   class="_message_19upo_85 _help-message_19upo_91"
-                  id="_r_5_"
+                  id="react-use-id-1"
                 >
                   0 members
                 </span>

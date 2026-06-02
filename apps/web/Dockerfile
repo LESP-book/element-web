@@ -1,8 +1,8 @@
-# syntax=docker.io/docker/dockerfile:1.22-labs@sha256:4c116b618ed48404d579b5467127b20986f2a6b29e4b9be2fee841f632db6a86
+# syntax=docker.io/docker/dockerfile:1.24-labs@sha256:7d49dad25a050e14338ba7028b0460243f9d911dedc160a8fe20c34738fef3af
 # Context must be the root of the monorepo
 
 # Builder
-FROM --platform=$BUILDPLATFORM node:24-bullseye@sha256:27e462f5db2402700867dfa8ec35e3a68b127fdf61b505db0dd6ab98c38284bb AS builder
+FROM --platform=$BUILDPLATFORM node:24-bullseye@sha256:44aeb8a19d0a201cdcb18ea3b25de9249454e6fc3cd05731584659859022fefb AS builder
 
 # Support custom branch of the js-sdk. This also helps us build images of element-web develop.
 ARG USE_CUSTOM_SDKS=false
@@ -15,7 +15,7 @@ WORKDIR /src
 COPY --parents package.json pnpm-lock.yaml pnpm-workspace.yaml patches scripts **/package.json /src/
 RUN corepack enable
 RUN --mount=type=bind,source=.git,target=/src/.git /src/scripts/docker-link-repos.sh
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Build
 COPY --link --exclude=.git --exclude=apps/web/docker . /src
@@ -25,7 +25,7 @@ RUN --mount=type=bind,source=.git,target=/src/.git /src/scripts/docker-package.s
 RUN cp /src/apps/web/config.sample.json /src/apps/web/webapp/config.json
 
 # App
-FROM nginxinc/nginx-unprivileged:alpine-slim@sha256:b5831ee7f7aa827cbae87df4a30a642f62c747d8525f5674365389f3adab278d
+FROM nginxinc/nginx-unprivileged:alpine-slim@sha256:01cb6604af2fd0dce17f7aab60759e47ad288bec0425ad4b43e749369d2eecca
 
 # Need root user to install packages & manipulate the usr directory
 USER root
