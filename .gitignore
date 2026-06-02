@@ -36,6 +36,7 @@ storybook-static
 AGENTS.md
 /.serena/*
 CLAUDE.md
+.gemini/
 # 本地调试时可能会检出 matrix-js-sdk，但不应进入 element-web 仓库
 /matrix-js-sdk/
 /packages/shared-components/.vitest-attachments

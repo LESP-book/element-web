@@ -34,6 +34,8 @@ import ScrollPanel from "./ScrollPanel";
 import { FilterTabGroup } from "../views/elements/FilterTabGroup";
 import SearchResultTile from "../views/rooms/SearchResultTile";
 import { formatFullDateNoDayNoTime } from "../../DateUtils";
+import { EventPresentationContextProvider } from "../../utils/EventPresentationContextProvider";
+import { Layout } from "../../settings/enums/Layout";
 
 interface IProps {
     roomId: string;
@@ -390,19 +392,21 @@ class FilePanel extends React.Component<IProps, IState> {
                         />
                     </div>
 
-                    <ScrollPanel
-                        className="mx_FilePanel_scrollPanel"
-                        startAtBottom={false}
-                        stickyBottom={false}
-                        onFillRequest={this.onFillRequest}
-                    >
-                        {this.state.loading && this.state.events.length === 0 ? (
-                            <li key="file-panel-loading-initial" className="mx_FilePanel_loading">
-                                <Spinner />
-                            </li>
-                        ) : null}
-                        {listItems}
-                    </ScrollPanel>
+                    <EventPresentationContextProvider layout={Layout.Group}>
+                        <ScrollPanel
+                            className="mx_FilePanel_scrollPanel"
+                            startAtBottom={false}
+                            stickyBottom={false}
+                            onFillRequest={this.onFillRequest}
+                        >
+                            {this.state.loading && this.state.events.length === 0 ? (
+                                <li key="file-panel-loading-initial" className="mx_FilePanel_loading">
+                                    <Spinner />
+                                </li>
+                            ) : null}
+                            {listItems}
+                        </ScrollPanel>
+                    </EventPresentationContextProvider>
                 </BaseCard>
             </ScopedRoomContextProvider>
         );

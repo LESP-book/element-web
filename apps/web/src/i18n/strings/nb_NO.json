@@ -15,8 +15,7 @@
         "room_name": "Rom %(name)s",
         "room_status_bar": "Statuslinje for rommet",
         "seek_bar_label": "Søkelinje for lyd",
-        "unread_messages": "Uleste meldinger.",
-        "user_menu": "Brukermeny"
+        "unread_messages": "Uleste meldinger."
     },
     "a11y_jump_first_unread_room": "Hopp til første uleste rom.",
     "action": {
@@ -98,7 +97,6 @@
         "rename": "Gi nytt navn",
         "reply": "Svar",
         "reply_in_thread": "Svar i tråd",
-        "report_content": "Rapporter innhold",
         "report_room": "Rapporter rom",
         "resend": "Send på nytt",
         "reset": "Nullstill",
@@ -341,7 +339,6 @@
         "sign_in_instead_prompt": "Har du allerede en konto? <a>Logg på</a>",
         "sign_in_or_register": "Logg inn eller lag en konto",
         "sign_in_or_register_description": "Bruk kontoen din eller opprett en ny for å fortsette.",
-        "sign_in_prompt": "Har du en konto? <a>Logg på</a>",
         "sign_in_with_sso": "Logg på med single sign-on",
         "signing_in": "Logger på...",
         "soft_logout": {
@@ -588,7 +585,6 @@
         "video": "Video",
         "video_room": "Videorom",
         "view_message": "Se melding",
-        "voice": "Tale",
         "warning": "Advarsel"
     },
     "composer": {
@@ -875,7 +871,6 @@
         "thread_root_id": "Trådens rot-ID: %(threadRootId)s",
         "threads_timeline": "Tidslinje for tråder",
         "title": "Utviklerverktøy",
-        "toggle_event": "slå av/på hendelse",
         "toolbox": "Verktøykasse",
         "use_at_own_risk": "Dette brukergrensesnittet kontrollerer IKKE verditypene. Bruk på egen risiko.",
         "user_avatar": "Avatar: %(avatar)s",
@@ -963,7 +958,6 @@
         "import_invalid_passphrase": "Autentiseringssjekk mislyktes: Feil passord?",
         "key_storage_out_of_sync": "Nøkkeloppbevaringen din er ikke synkronisert.",
         "key_storage_out_of_sync_description": "Bekreft gjenopprettingsnøkkelen for å opprettholde tilgang til nøkkellagring og meldingshistorikk.",
-        "message_shared_by": "%(displayName)s (%(userId)s) delte denne meldingen siden du ikke var i rommet da den ble sendt.",
         "messages_not_secure": {
             "cause_1": "Hjemmeserveren din",
             "cause_2": "Hjemmeserveren brukeren du bekrefter er koblet til",
@@ -1549,11 +1543,6 @@
         "notifications": "Aktiver varslingspanelet i romoverskriften",
         "render_reaction_images": "Gjengi egendefinerte bilder i reaksjoner",
         "render_reaction_images_description": "Noen ganger omtalt som \"egendefinerte emojier\".",
-        "report_to_moderators": "Rapporter til moderatorene",
-        "report_to_moderators_description": "I rom som støtter moderering, kan du bruke \"Rapporter\"-knappen for å rapportere misbruk til rommoderatorene.",
-        "share_history_on_invite": "Del kryptert historikk med nye medlemmer",
-        "share_history_on_invite_description": "Når du inviterer en bruker til et kryptert rom som har historikkvisibilitet satt til «delt», deler du kryptert historikk med den brukeren, og aksepterer kryptert historikk når du blir invitert til et slikt rom.",
-        "share_history_on_invite_warning": "Denne funksjonen er EKSPERIMENTELL, og ikke alle sikkerhetstiltak er implementert. Ikke aktiver på produksjonskontoer.",
         "sliding_sync": "Sliding Sync modus",
         "sliding_sync_description": "Under aktiv utvikling, kan ikke deaktiveres.",
         "sliding_sync_disabled_notice": "Logg ut og inn igjen for å deaktivere",
@@ -1798,7 +1787,6 @@
         "restricted": "Begrenset"
     },
     "powered_by_matrix": "Drevet av Matrix",
-    "powered_by_matrix_with_logo": "Desentralisert, kryptert chat og samarbeid drevet av $matrixLogo",
     "presence": {
         "away": "Borte",
         "busy": "Opptatt",
@@ -1832,25 +1820,10 @@
     },
     "report_content": {
         "description": "Rapportering av denne meldingen vil sende sin unike 'hendelses-ID' til administratoren av hjemmeserveren din. Hvis meldinger i dette rommet er kryptert, vil ikke hjemmeserveradministratoren kunne lese meldingsteksten eller se noen filer eller bilder.",
-        "disagree": "Uenig",
-        "error_create_room_moderation_bot": "Kan ikke opprette rom med modereringsbot",
         "hide_messages_from_user": "Sjekk om du vil skjule alle nåværende og fremtidige meldinger fra denne brukeren.",
         "ignore_user": "Ignorer bruker",
-        "illegal_content": "Ulovlig innhold",
         "missing_reason": "Vennligst fyll ut hvorfor du rapporterer.",
-        "nature": "Velg en type og beskriv hva som gjør denne meldingen støtende.",
-        "nature_disagreement": "Det denne brukeren skriver er feil.\nDette vil bli rapportert til rommoderatorene.",
-        "nature_illegal": "Denne brukeren viser ulovlig oppførsel, for eksempel ved å utlevere mennesker eller true med vold.\nDette vil bli rapportert til rommoderatorene som kan eskalere dette til juridiske myndigheter.",
-        "nature_nonstandard_admin": "Dette rommet er dedikert til ulovlig eller giftig innhold, eller moderatorene klarer ikke å moderere ulovlig eller giftig innhold.\nDette vil bli rapportert til administratorene av%(homeserver)s.",
-        "nature_nonstandard_admin_encrypted": "Dette rommet er dedikert til ulovlig eller giftig innhold, eller moderatorene klarer ikke å moderere ulovlig eller giftig innhold.\nDette vil bli rapportert til administratorene av%(homeserver)s. Administratorene vil IKKE kunne lese det krypterte innholdet i dette rommet.",
-        "nature_other": "En hvilken som helst annen grunn. Vennligst beskriv problemet.\nDette vil bli rapportert til rommoderatorene.",
-        "nature_spam": "Denne brukeren spammer rommet med annonser, lenker til annonser eller til propaganda.\nDette vil bli rapportert til rommoderatorene.",
-        "nature_toxic": "Denne brukeren viser giftig oppførsel, for eksempel ved å fornærme andre brukere eller dele innhold kun for voksne i et familievennlig rom eller på annen måte bryte reglene i dette rommet.\nDette vil bli rapportert til rommoderatorene.",
-        "other_label": "Andre",
-        "report_content_to_homeserver": "Rapportere innhold til hjemmeserveradministratoren",
-        "report_entire_room": "Rapporter hele rommet",
-        "spam_or_propaganda": "Spam eller propaganda",
-        "toxic_behaviour": "Giftig oppførsel"
+        "report_content_to_homeserver": "Rapportere innhold til hjemmeserveradministratoren"
     },
     "report_room": {
         "description": "Rapporter dette rommet til hjemmeserveradministratoren din. Dette vil sende rommets unike ID, men hvis meldinger er kryptert, vil ikke administratoren kunne lese dem eller se delte filer.",
@@ -2218,8 +2191,6 @@
             "aliases_section": "Rom-adresser",
             "avatar_field_label": "Rommets avatar",
             "canonical_alias_field_label": "Hovedadresse",
-            "default_url_previews_off": "URL-forhåndsvisninger er skrudd av som standard for deltakerene i dette rommet.",
-            "default_url_previews_on": "URL-forhåndsvisninger er skrudd på som standard for deltakerene i dette rommet.",
             "description_space": "Rediger innstillinger knyttet til området ditt.",
             "error_creating_alias_description": "Det oppstod en feil ved opprettelsen av adressen. Det kan hende at serveren ikke tillater det, eller at det oppstod en midlertidig feil.",
             "error_creating_alias_title": "Feil ved oppretting av adresse",
@@ -2250,12 +2221,7 @@
             "published_aliases_explainer_space": "Publiserte adresser kan brukes av hvem som helst på hvilken som helst server for å bli med i ditt område.",
             "published_aliases_section": "Publiserte adresser",
             "save": "Lagre endringer",
-            "topic_field_label": "Rommets tema",
-            "url_preview_encryption_warning": "I krypterte rom som denne, er URL-forhåndsvisninger skrudd av som standard for å sikre at hjemmeserveren din (der forhåndsvisningene blir generert) ikke kan samle inn informasjon om lenkene som du ser i dette rommet.",
-            "url_preview_explainer": "Når noen legger til en URL i meldingene deres, kan en URL-forhåndsvisning bli vist for å gi mere informasjonen om den lenken, f.eks. tittelen, beskrivelsen, og et bilde fra nettstedet.",
-            "url_previews_section": "URL-forhåndsvisninger",
-            "user_url_previews_default_off": "Du har <a>skrudd av</a> URL-forhåndsvisninger som standard.",
-            "user_url_previews_default_on": "Du har <a>skrudd på</a> URL-forhåndsvisninger som standard."
+            "topic_field_label": "Rommets tema"
         },
         "notifications": {
             "browse_button": "Bla",
@@ -2676,9 +2642,7 @@
             "unable_to_load_msisdns": "Kan ikke laste inn telefonnumre",
             "username": "Brukernavn"
         },
-        "inline_url_previews_default": "Skru på URL-forhåndsvisninger inni meldinger som standard",
-        "inline_url_previews_room": "Skru på URL-forhåndsvisninger som standard for deltakerne i dette rommet",
-        "inline_url_previews_room_account": "Skru på URL-forhåndsvisninger for dette rommet (Påvirker bare deg)",
+        "inline_url_previews_default": "Aktiver forhåndsvisninger",
         "insert_trailing_colon_mentions": "Sett inn et etterfølgende kolon etter at brukeromtaler i starten av en melding",
         "invite_controls": {
             "default_label": "Tillat brukere å invitere deg til rom"
@@ -2944,7 +2908,7 @@
             "sign_in_with_qr_description": "Bruk en QR-kode for å logge på en annen enhet og konfigurere sikker meldingsutveksling.",
             "sign_in_with_qr_unsupported": "Støttes ikke av din kontoleverandør",
             "sign_out": "Logg ut av denne sesjonen",
-            "sign_out_all_other_sessions": "Logg av alle andre sesjoner (%(otherSessionsCount)s)",
+            "sign_out_all_other_sessions": "Fjern alle andre sesjoner (%(otherSessionsCount)s)",
             "sign_out_confirm_description": {
                 "one": "Er du sikker på at du vil logge ut av %(count)s sesjonen?",
                 "other": "Er du sikker på at du vil logge av %(count)s sesjoner?"
@@ -3334,7 +3298,6 @@
         "download_action_downloading": "Laster ned",
         "download_failed": "Nedlasting mislyktes",
         "download_failed_description": "Det oppstod en feil under nedlasting av denne filen",
-        "e2e_state": "Tilstand for ende-til-ende-kryptering",
         "edits": {
             "tooltip_label": "Redigert den %(date)s. Klikk for å se endringer.",
             "tooltip_sub": "Klikk for å vise redigeringer",
@@ -3416,9 +3379,7 @@
         "m.poll.start": "%(senderName)s har startet en avstemning - %(pollQuestion)s",
         "m.room.avatar": {
             "changed": "%(senderDisplayName)s endret rommets avatar.",
-            "changed_img": "%(senderDisplayName)s endret rommets avatar til <img/>",
-            "lightbox_title": "%(senderDisplayName)s endret avataren for %(roomName)s",
-            "removed": "%(senderDisplayName)s fjernet romavataren."
+            "lightbox_title": "%(senderDisplayName)s endret avataren for %(roomName)s"
         },
         "m.room.canonical_alias": {
             "alt_added": {
@@ -3464,7 +3425,7 @@
         "m.room.member": {
             "accepted_3pid_invite": "%(targetName)s aksepterte invitasjonen til %(displayName)s",
             "accepted_invite": "%(targetName)s aksepterte en invitasjon",
-            "ban": "%(senderName)s utestengte %(targetName)s",
+            "ban": "%(senderName)s utestengte en bruker",
             "ban_reason": "%(senderName)s utestengte en bruker: %(reason)s",
             "change_avatar": "%(senderName)s endret profilbildet sitt",
             "change_name": "%(oldDisplayName)s endret visningsnavnet sitt til %(displayName)s",
@@ -3540,7 +3501,6 @@
             "created_rule_rooms": "%(senderName)s opprettet en regel som forbyr rom som samsvarer med %(glob)s for %(reason)s",
             "created_rule_servers": "%(senderName)s opprettet en regel som forbyr servere som samsvarer med %(glob)s for %(reason)s",
             "created_rule_users": "%(senderName)s opprettet en regel som utestenger brukere som matcher %(glob)s for %(reason)s",
-            "message_hidden": "Du har ignorert denne brukeren, så meldingen er skjult. <a>Vis likevel.</a>",
             "removed_rule": "%(senderName)s fjernet en forbudsregel som samsvarer %(glob)s",
             "removed_rule_rooms": "%(senderName)s fjernet regelen som forbyr rom som matcher %(glob)s",
             "removed_rule_servers": "%(senderName)s fjernet regelen som utestenger servere som matcher %(glob)s",
@@ -3842,12 +3802,6 @@
         "verify_button": "Verifiser bruker",
         "verify_explainer": "For ekstra sikkerhet, bekreft denne brukeren ved å sjekke en engangskode på begge enhetene dine."
     },
-    "user_menu": {
-        "link_new_device": "Lenke til ny enhet",
-        "settings": "Alle innstillinger",
-        "switch_theme_dark": "Bytt til mørk modus",
-        "switch_theme_light": "Bytt til lys modus"
-    },
     "voip": {
         "already_in_call": "Allerede i en samtale",
         "already_in_call_person": "Du er allerede i en samtale med denne personen.",
@@ -3872,7 +3826,6 @@
         "connection_lost": "Mistet forbindelsen til serveren",
         "connection_lost_description": "Du kan ikke ringe uten tilkobling til serveren.",
         "consulting": "Rådføring med %(transferTarget)s. <a>Overfør til %(transferee)s</a>",
-        "decline_call": "Avslå",
         "default_device": "Standardenhet",
         "dial": "Ring",
         "dialpad": "Nummerpanel",
@@ -3923,7 +3876,6 @@
         "show_sidebar_button": "Vis sidepanel",
         "silence": "Demp samtale",
         "silenced": "Varslinger er dempet",
-        "skip_lobby_toggle_option": "Bli med umiddelbart",
         "start_screenshare": "Begynn å dele skjermen din",
         "stop_screenshare": "Slutt å dele skjermen din",
         "too_many_calls": "For mange samtaler",
@@ -3945,7 +3897,6 @@
         "user_is_presenting": "%(sharerName)s presenterer",
         "video_call": "Videosamtale",
         "video_call_incoming": "Innkommende videosamtale",
-        "video_call_started": "Videosamtale startet",
         "video_call_using": "Videosamtale ved hjelp av:",
         "voice_call": "Stemmesamtale",
         "voice_call_incoming": "Innkommende taleanrop",
@@ -3953,7 +3904,6 @@
         "you_are_presenting": "Du presenterer"
     },
     "web_default_device_name": "%(appName)s: %(browserName)s på %(osName)s",
-    "welcome_to_element": "Velkommen til Element",
     "widget": {
         "added_by": "Modulen ble lagt til av",
         "capabilities_dialog": {

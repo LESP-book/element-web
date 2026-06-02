@@ -5,9 +5,10 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import { type Locator, type Page } from "@playwright/test";
+import { rejectToast } from "@element-hq/element-web-playwright-common";
 
 import { expect, test } from "../../../element-web-test";
+import { assertRoomInSection, dragRoomToSection, getPrimaryFilters, getRoomList, getSectionHeader } from "./utils";
 
 test.describe("Room list sections", () => {
     test.use({
@@ -19,37 +20,10 @@ test.describe("Room list sections", () => {
         },
     });
 
-    /**
-     * Get the room list
-     * @param page
-     */
-    function getRoomList(page: Page): Locator {
-        return page.getByTestId("room-list");
-    }
-
-    /**
-     * Get the primary filters
-     * @param page
-     */
-    function getPrimaryFilters(page: Page): Locator {
-        return page.getByTestId("primary-filters");
-    }
-
-    /**
-     * Get a section header toggle button by section name
-     * @param page
-     * @param sectionName The display name of the section (e.g. "Favourites", "Chats", "Low Priority")
-     * @param isUnread Whether to look for the unread version of the section header
-     */
-    function getSectionHeader(page: Page, sectionName: string, isUnread = false): Locator {
-        return getRoomList(page).getByRole("gridcell", {
-            name: isUnread ? `Toggle ${sectionName} section with unread room(s)` : `Toggle ${sectionName} section`,
-        });
-    }
-
     test.beforeEach(async ({ page, app, user }) => {
-        // The notification toast is displayed above the search section
-        await app.closeNotificationToast();
+        // The toasts are displayed above the search section
+        await rejectToast(page, "Verify this device");
+        await rejectToast(page, "Notifications");
 
         // focus the user menu to avoid to have hover decoration
         await page.getByRole("button", { name: "User menu" }).focus();
@@ -209,6 +183,37 @@ test.describe("Room list sections", () => {
             await expect(getSectionHeader(page, "Low Priority")).toBeVisible();
             roomItem = roomList.getByRole("row", { name: "Open room my room" });
             await expect(roomItem).toBeVisible();
+        });
+
+        test("should move a room from Chats to Favourites when using dnd", async ({ page, app }) => {
+            await app.client.createRoom({ name: "my room" });
+
+            const favouriteId = await app.client.createRoom({ name: "favourite room" });
+            await app.client.evaluate(async (client, roomId) => {
+                await client.setRoomTag(roomId, "m.favourite");
+            }, favouriteId);
+
+            await dragRoomToSection(page, "my room", "Favourites");
+            await assertRoomInSection(page, "Favourites", "my room");
+        });
+
+        test("should move a room from Favourites to Chats when using dnd", async ({ page, app }) => {
+            const favouriteId = await app.client.createRoom({ name: "my room" });
+            await app.client.evaluate(async (client, roomId) => {
+                await client.setRoomTag(roomId, "m.favourite");
+            }, favouriteId);
+
+            // Create a second favourite room to ensure we stay in section mode (not flat list)
+            const favouriteId2 = await app.client.createRoom({ name: "favourite room" });
+            await app.client.evaluate(async (client, roomId) => {
+                await client.setRoomTag(roomId, "m.favourite");
+            }, favouriteId2);
+
+            // Ensure the Chats section is visible by creating a room in it
+            await app.client.createRoom({ name: "room in chats" });
+
+            await dragRoomToSection(page, "my room", "Chats");
+            await assertRoomInSection(page, "Chats", "my room");
         });
     });
 
