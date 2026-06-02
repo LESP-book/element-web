@@ -1,9 +1,57 @@
-/webapp
+/build
+/cert.pem
+/dist
+/key.pem
+/lib
+node_modules
+/.npmrc
+/*.log
+package-lock.json
+.DS_Store
+**/.idea
+/webpack-stats.json
+/.tmp
+.vscode
+.vscode/
+.env
+.env.*
+coverage
+/index.html
 /config.json
 /config.json.*
-/config.local*.json
-# Legacy skinning file that some people might still have
-/src/component-index.js
-# Auto-generated file
 /src/modules.js
-/build_config.yaml
+/webapp/
+# version file and tarball created by `npm pack` / `yarn pack`
+/git-revision.txt
+jest-sonar.xml
+
+*storybook.log
+storybook-static
+
+/packages/shared-components/node_modules
+/packages/shared-components/dist
+/packages/shared-components/src/i18nKeys.d.ts
+
+# Ignore developer specific files
+AGENTS.md
+/.serena/*
+CLAUDE.md
+/.gemini/
+# 本地调试时可能会检出 matrix-js-sdk，但不应进入 element-web 仓库
+/matrix-js-sdk/
+/packages/shared-components/.vitest-attachments
+
+# TSC incremental compilation information
+*.tsbuildinfo
+
+/.link-config
+
+.nx/cache
+.nx/workspace-data
+
+.pnpm-store
+
+# vitepress
+/docs/.vitepress/dist
+/docs/.vitepress/cache
+.omx/
