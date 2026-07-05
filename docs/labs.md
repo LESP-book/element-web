@@ -104,10 +104,6 @@ Unreliable in encrypted rooms.
 
 Enables knock feature for rooms. This allows users to ask to join a room.
 
-## New room list (`feature_new_room_list`) [In Development]
-
-Enable the new room list that is currently in development.
-
 ## Exclude insecure devices when sending/receiving messages (`feature_exclude_insecure_devices`)
 
 Do not send or receive messages to/from devices that are not properly verified. Users with unverified devices will not
@@ -133,3 +129,10 @@ Requires [MSC4429](https://github.com/matrix-org/matrix-spec-proposals/pull/4429
 
 **Warning** This feature has options which are not backwards compatible, disabling
 it may have unintended consequences.
+
+## Log in with QR (`feature_login_with_qr`)
+
+Enables logging in to Element Web/Desktop by using Element X to scan a QR code.
+Requires server support, based on the v2024 edition of [MSC4108](https://github.com/matrix-org/matrix-spec-proposals/pull/4108).
+Can only be configured via config.json, as labs flags cannot be set until after login, and are cleared on log out. The UI option is disabled.
+Note, this does not affect the existing `Link new device` flow using the same MSC.

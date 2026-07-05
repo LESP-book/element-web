@@ -31,7 +31,7 @@ import { SDKContext } from "../../../../src/contexts/SDKContext";
 import { StandardActions } from "../../../../src/notifications/StandardActions";
 import ResizeNotifier from "../../../../src/utils/ResizeNotifier";
 import { flushPromises, getMockClientWithEventEmitter, mockClientMethodsUser } from "../../../test-utils";
-import { TestSdkContext } from "../../TestSdkContext";
+import { TestSDKContext } from "../../TestSDKContext";
 import defaultDispatcher from "../../../../src/dispatcher/dispatcher";
 import SettingsStore from "../../../../src/settings/SettingsStore";
 import { SettingLevel } from "../../../../src/settings/SettingLevel";
@@ -39,35 +39,25 @@ import { Action } from "../../../../src/dispatcher/actions";
 import Modal from "../../../../src/Modal";
 import { SETTINGS } from "../../../../src/settings/Settings";
 import ToastStore from "../../../../src/stores/ToastStore";
-
-// Create a mock resizer instance that can be shared across tests
-const mockResizerInstance = {
-    attach: jest.fn(),
-    detach: jest.fn(),
-    forHandleWithId: jest.fn().mockReturnValue({ resize: jest.fn() }),
-    setClassNames: jest.fn(),
-};
-
-// Mock the Resizer module
-jest.mock("../../../../src/resizer", () => {
-    const originalModule = jest.requireActual("../../../../src/resizer");
-    return {
-        ...originalModule,
-        Resizer: jest.fn().mockImplementation((container, distributorBuilder, collapseConfig) => {
-            // Store the callbacks globally for test access
-            (global as any).__resizeCallbacks = collapseConfig;
-            return mockResizerInstance;
-        }),
-    };
-});
+import { ModuleApi } from "../../../../src/modules/Api";
 
 describe("<LoggedInView />", () => {
     const userId = "@alice:domain.org";
     const mockClient = getMockClientWithEventEmitter({
         ...mockClientMethodsUser(userId),
         getClientWellKnown: jest.fn(),
+        waitForClientWellKnown: jest.fn().mockResolvedValue({}),
+        _unstable_getRTCTransports: jest.fn().mockResolvedValue([]),
+        matrixRTC: {
+            on: jest.fn(),
+            off: jest.fn(),
+        },
         getAccountData: jest.fn(),
         getRoom: jest.fn(),
+        getRooms: jest.fn().mockReturnValue([]),
+        getVisibleRooms: jest.fn().mockReturnValue([]),
+        getProfileInfo: jest.fn().mockResolvedValue({}),
+        getAuthMetadata: jest.fn().mockResolvedValue(null),
         getSyncState: jest.fn().mockReturnValue(null),
         getSyncStateData: jest.fn().mockReturnValue(null),
         getMediaHandler: jest.fn(),
@@ -79,13 +69,12 @@ describe("<LoggedInView />", () => {
         doesServerSupportExtendedProfiles: jest.fn().mockResolvedValue(true),
     });
     const mediaHandler = new MediaHandler(mockClient);
-    const mockSdkContext = new TestSdkContext();
+    const mockSdkContext = new TestSDKContext();
 
     const defaultProps = {
         matrixClient: mockClient,
         onRegistered: jest.fn(),
         resizeNotifier: new ResizeNotifier(),
-        collapseLhs: false,
         hideToSRUsers: false,
         config: {
             brand: "Test",
@@ -534,123 +523,37 @@ describe("<LoggedInView />", () => {
         });
     });
 
-    describe("resizer preferences", () => {
-        let mockResize: jest.Mock;
-        let mockForHandleWithId: jest.Mock;
+    describe("module-rendered fullscreen view (e.g. multiroom)", () => {
+        // A page_type for which a module registers a custom full-screen renderer.
+        const modulePageType = "io.element.test_fullscreen";
+
         beforeEach(() => {
-            // Clear localStorage before each test
-            window.localStorage.clear();
-
-            mockResize = jest.fn();
-            mockForHandleWithId = jest.fn().mockReturnValue({ resize: mockResize });
-
-            // Update the shared mock instance for this test
-            mockResizerInstance.forHandleWithId = mockForHandleWithId;
-
-            // Clear any global callback state
-            delete (global as any).__resizeCallbacks;
+            ModuleApi.instance.navigation.registerLocationRenderer(modulePageType, () => (
+                <div data-testid="module-content" />
+            ));
         });
 
-        it("should call resize with default size when localStorage contains NaN value", () => {
-            // Set invalid value in localStorage that will result in NaN
-            window.localStorage.setItem("mx_lhs_size", "not-a-number");
-
-            getComponent();
-
-            // Verify that when lhsSize is NaN, it defaults to 350 and calls resize
-            expect(mockForHandleWithId).toHaveBeenCalledWith("lp-resizer");
-            expect(mockResize).toHaveBeenCalledWith(350);
-        });
-
-        it("should use existing size when localStorage contains valid value", () => {
-            // Set valid value in localStorage
-            window.localStorage.setItem("mx_lhs_size", "400");
-
-            getComponent();
-
-            // Verify the resize method was called with the stored size (400)
-            expect(mockResize).toHaveBeenCalledWith(400);
-        });
-
-        it("should enforce minimum width for new room list when stored size is zero", async () => {
-            // Enable new room list feature
-            await SettingsStore.setValue("feature_new_room_list", null, SettingLevel.DEVICE, true);
-
-            // 0 represents the collapsed state for the old room list, which could have been set before the new room list was enabled
-            window.localStorage.setItem("mx_lhs_size", "0");
-
-            getComponent();
-
-            // Verify the resize method was called with the default size (350) when stored size is below minimum
-            expect(mockResize).toHaveBeenCalledWith(350);
-        });
-
-        it("should keep stored width when new room list is already wider than the avatar-only minimum", async () => {
-            await SettingsStore.setValue("feature_new_room_list", null, SettingLevel.DEVICE, true);
-
-            window.localStorage.setItem("mx_lhs_size", "100");
-
-            getComponent();
-
-            expect(mockResize).toHaveBeenCalledWith(100);
-        });
-
-        it("should not set localStorage to 0 when resizing lp-resizer to minimum width for new room list", async () => {
-            // Enable new room list feature and mock SettingsStore
-            await SettingsStore.setValue("feature_new_room_list", null, SettingLevel.DEVICE, true);
-
-            const minimumWidth = 68; // NEW_ROOM_LIST_MIN_WIDTH
-
-            // Render the component
-            getComponent();
-
-            // Get the callbacks that were captured during resizer creation
-            const callbacks = (global as any).__resizeCallbacks;
-
-            // Create a mock DOM node for isItemCollapsed to check
-            const domNode = {
-                classList: {
-                    contains: jest.fn().mockReturnValue(true), // Simulate the error where mx_LeftPanel_minimized is present
-                },
-            } as any;
-
-            callbacks.onResized(minimumWidth);
-            const isCollapsed = callbacks.isItemCollapsed(domNode);
-            callbacks.onCollapsed(isCollapsed); // Not collapsed for new room list
-            callbacks.onResizeStop();
-
-            // Verify localStorage was set to the minimum width (68), not 0
-            expect(window.localStorage.getItem("mx_lhs_size")).toBe("68");
-        });
-    });
-
-    describe("create a new resizer when page_type changes", () => {
         afterEach(() => {
-            jest.clearAllMocks();
+            ModuleApi.instance.navigation.locationRenderers.delete(modulePageType);
         });
 
-        it("should call loadResizer when page_type changes", () => {
-            const component = getComponent({ page_type: "room" });
+        it("renders the resizable separator for a normal room view with the new room list", () => {
+            const { container } = getComponent({ page_type: "room" });
 
-            // Re-render with different page_type
-            component.rerender(<LoggedInView {...defaultProps} page_type="home" />);
-
-            // Verify that detach was called (from loadResizer)
-            expect(mockResizerInstance.detach).toHaveBeenCalledTimes(1);
-            // Verify that attach was called (from loadResizer)
-            // 1 (when page_type = "room") + 1 (when page_type = "home")
-            expect(mockResizerInstance.attach).toHaveBeenCalledTimes(2);
+            // With the new room list and no module renderer, the resizable left panel and its separator are used.
+            expect(container.querySelector(".mx_Separator")).toBeInTheDocument();
         });
 
-        it("should not call loadResizer when page_type remains the same", () => {
-            const component = getComponent({ page_type: "room" });
+        it("does not render the resizer for a module-rendered fullscreen view, but keeps the space panel", () => {
+            const { container, getByTestId } = getComponent({ page_type: modulePageType });
 
-            // Re-render with same page_type but different other props
-            component.rerender(<LoggedInView {...defaultProps} page_type="room" currentRoomId="!different:room.id" />);
-
-            // Verify that resizer methods were not called
-            expect(mockResizerInstance.detach).not.toHaveBeenCalled();
-            expect(mockResizerInstance.attach).toHaveBeenCalledTimes(1);
+            // The module's full-screen content is shown...
+            expect(getByTestId("module-content")).toBeInTheDocument();
+            // ...without the resizable separator or the legacy resize handle...
+            expect(container.querySelector(".mx_Separator")).not.toBeInTheDocument();
+            expect(container.querySelector(".mx_ResizeHandle")).not.toBeInTheDocument();
+            // ...while the space panel rail remains visible.
+            expect(container.querySelector(".mx_SpacePanel")).toBeInTheDocument();
         });
     });
 });

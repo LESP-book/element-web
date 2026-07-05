@@ -254,9 +254,6 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
                 "matrix-widget-api": getPackageRoot("matrix-widget-api"),
                 "oidc-client-ts": getPackageRoot("oidc-client-ts"),
 
-                // Define a variable so the i18n stuff can load
-                "$webapp": path.resolve(__dirname, "webapp"),
-
                 // Make shared-components imports resolve to EW deps
                 "@vector-im/compound-web": getPackageRoot("@vector-im/compound-web", ""),
             },
@@ -302,6 +299,12 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
             ],
             rules: [
                 {
+                    // Match imports containing the ?raw query string
+                    resourceQuery: /raw/,
+                    // Instruct Webpack to emit the file source as a string
+                    type: "asset/source",
+                },
+                {
                     test: /\.js$/,
                     enforce: "pre" as const,
                     use: ["source-map-loader"],
@@ -338,6 +341,7 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
                 },
                 {
                     test: /\.css$/,
+                    resourceQuery: { not: [/raw/] },
                     use: [
                         MiniCssExtractPlugin.loader,
                         {

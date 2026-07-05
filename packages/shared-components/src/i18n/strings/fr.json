@@ -53,6 +53,7 @@
     },
     "menus": {
         "user_menu": {
+            "clear_status": "Effacer",
             "create_an_account": "Créer un compte",
             "got_an_account": "Tu as un compte ?",
             "manage_account": "Gérer le compte",
@@ -65,6 +66,11 @@
         "default_settings": "Correspondre aux paramètres par défaut",
         "mentions_keywords": "Mentions et mots-clés",
         "mute_room": "Rendre le salon muet"
+    },
+    "release_announcement": {
+        "room_list_section_close": "OK",
+        "room_list_section_description": " Regroupez vos discussions en sections afin que les conversations restent organisées et faciles à parcourir.",
+        "room_list_section_title": "Introduction des sections"
     },
     "room": {
         "context_menu": {
@@ -118,10 +124,7 @@
             "no_chats": "Pas encore de discussions",
             "no_chats_description": "Commencez par envoyer un message à quelqu'un ou en créant un salon",
             "no_chats_description_no_room_rights": "Commencez par envoyer un message à quelqu'un",
-            "no_favourites": "Vous n'avez pas encore de discussion favorite",
-            "no_favourites_description": "Vous pouvez ajouter une conversation à vos favoris dans les paramètres de discussion",
             "no_invites": "Vous n'avez aucune invitation non lue",
-            "no_lowpriority": "Vous n'avez aucun salon avec une priorité basse",
             "no_mentions": "Vous n'avez aucune mention non lue",
             "no_people": "Vous n'avez encore de discussions",
             "no_people_description": "Veuillez désélectionner des filtres pour voir vos discussions",
@@ -134,9 +137,7 @@
         "expand_all_sections": "Développer toutes les sections",
         "expand_filters": "Développer la liste des filtres",
         "filters": {
-            "favourite": "Favoris",
             "invites": "Invitations",
-            "low_priority": "Priorité basse",
             "mentions": "Mentions",
             "people": "Personnes",
             "rooms": "Salons",
@@ -150,7 +151,8 @@
             "low_priority": "Priorité basse",
             "mark_read": "Marquer comme lu",
             "mark_unread": "Marquer comme non lu",
-            "move_to_section": "Déplacer vers"
+            "move_to_section": "Déplacer vers",
+            "remove_from_section": "Supprimer de la section"
         },
         "notification_options": "Paramètres de notifications",
         "open_space_menu": "Ouvrir le menu de l’espace",
@@ -251,6 +253,7 @@
             "label": "Actions de message",
             "view_in_room": "Voir dans le salon"
         },
+        "message_shared_by": "%(displayName)s(%(userId)s ) a partagé ce message car vous n'étiez pas dans le salon lors de son envoi.",
         "message_timestamp_received_at": "Reçu à : %(dateTime)s",
         "message_timestamp_sent_at": "Envoyé à : %(dateTime)s",
         "mjolnir": {

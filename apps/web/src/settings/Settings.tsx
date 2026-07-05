@@ -54,8 +54,9 @@ import { type ComputedInviteConfig } from "../@types/invite-rules.ts";
 import BlockInvitesConfigController from "./controllers/BlockInvitesConfigController.ts";
 import WebEventIndexController from "./controllers/WebEventIndexController.ts";
 import RequiresSettingsController from "./controllers/RequiresSettingsController.ts";
-import { type OrderedCustomSections, type CustomSectionsData } from "../stores/room-list-v3/section.ts";
+import { type ReorderableSection, type CustomSectionsData } from "../stores/room-list-v3/section.ts";
 import { type NotificationSound } from "../Notifier.ts";
+import VideoRoomsBetaImage from "../../res/img/betas/video_rooms.png";
 
 export const defaultWatchManager = new WatchManager();
 
@@ -214,7 +215,6 @@ export interface Settings {
     "feature_mjolnir": IFeature;
     "feature_custom_themes": IFeature;
     "feature_exclude_insecure_devices": IFeature;
-    "feature_html_topic": IFeature;
     "feature_bridge_state": IFeature;
     "feature_jump_to_date": IFeature;
     "feature_sliding_sync": IBaseSetting<boolean>;
@@ -225,12 +225,12 @@ export interface Settings {
     "feature_location_share_live": IFeature;
     "feature_dynamic_room_predecessors": IFeature;
     "feature_render_reaction_images": IFeature;
-    "feature_new_room_list": IFeature;
-    "feature_room_list_sections": IFeature;
+    "feature_retention": IFeature;
     "feature_ask_to_join": IFeature;
     "feature_notifications": IFeature;
     "feature_msc4362_encrypted_state_events": IFeature;
     "feature_user_status": IFeature;
+    "feature_login_with_qr": IFeature;
     // These are in the feature namespace but aren't actually features
     "feature_hidebold": IBaseSetting<boolean>;
 
@@ -268,8 +268,6 @@ export interface Settings {
     "scrollToBottomOnMessageSent": IBaseSetting<boolean>;
     "Pill.shouldShowPillAvatar": IBaseSetting<boolean>;
     "TextualBody.enableBigEmoji": IBaseSetting<boolean>;
-    "MessageComposerInput.isRichTextEnabled": IBaseSetting<boolean>;
-    "MessageComposer.showFormatting": IBaseSetting<boolean>;
     "sendTypingNotifications": IBaseSetting<boolean>;
     "showTypingNotifications": IBaseSetting<boolean>;
     "ctrlFForSearch": IBaseSetting<boolean>;
@@ -337,7 +335,6 @@ export interface Settings {
     "RightPanel.phases": IBaseSetting<IRightPanelForRoomStored | null>;
     "enableEventIndexing": IBaseSetting<boolean>;
     "crawlerSleepTime": IBaseSetting<number>;
-    "showCallButtonsInComposer": IBaseSetting<boolean>;
     "ircDisplayNameWidth": IBaseSetting<number>;
     "layout": IBaseSetting<Layout>;
     "Images.size": IBaseSetting<ImageSize>;
@@ -369,7 +366,7 @@ export interface Settings {
     "blockInvites": IBaseSetting<boolean>;
     "Developer.elementCallUrl": IBaseSetting<string>;
     "RoomList.CustomSectionData": IBaseSetting<CustomSectionsData>;
-    "RoomList.OrderedCustomSections": IBaseSetting<OrderedCustomSections>;
+    "RoomList.OrderedCustomSections": IBaseSetting<ReorderableSection[]>;
 }
 
 export type SettingKey = keyof Settings;
@@ -412,8 +409,7 @@ export const SETTINGS: Settings = {
             ),
             feedbackLabel: "video-room-feedback",
             feedbackSubheading: _td("labs|video_rooms_feedbackSubheading"),
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            image: require("../../res/img/betas/video_rooms.png"),
+            image: VideoRoomsBetaImage,
             requiresRefresh: true,
         },
     },
@@ -426,13 +422,11 @@ export const SETTINGS: Settings = {
         betaInfo: {
             title: _td("labs|notification_settings_beta_title"),
             caption: () => (
-                <>
-                    <p>
-                        {_t("labs|notification_settings_beta_caption", {
-                            brand: SdkConfig.get().brand,
-                        })}
-                    </p>
-                </>
+                <p>
+                    {_t("labs|notification_settings_beta_caption", {
+                        brand: SdkConfig.get().brand,
+                    })}
+                </p>
             ),
         },
     },
@@ -459,7 +453,7 @@ export const SETTINGS: Settings = {
         shouldExportToRageshake: false,
     },
     "blockInvites": {
-        controller: new BlockInvitesConfigController("blockInvites"),
+        controller: new BlockInvitesConfigController("blockInvites", defaultWatchManager),
         supportedLevels: [SettingLevel.ACCOUNT],
         default: false,
     },
@@ -526,14 +520,6 @@ export const SETTINGS: Settings = {
         default: null,
         // Contains room ID
         shouldExportToRageshake: false,
-    },
-    "feature_html_topic": {
-        isFeature: true,
-        labsGroup: LabGroup.Rooms,
-        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS_WITH_CONFIG_PRIORITISED,
-        supportedLevelsAreOrdered: true,
-        displayName: _td("labs|html_topic"),
-        default: false,
     },
     "feature_bridge_state": {
         isFeature: true,
@@ -657,23 +643,13 @@ export const SETTINGS: Settings = {
         supportedLevelsAreOrdered: true,
         default: false,
     },
-    "feature_new_room_list": {
-        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS_WITH_CONFIG_PRIORITISED,
+    "feature_login_with_qr": {
+        supportedLevels: [SettingLevel.CONFIG],
         labsGroup: LabGroup.Ui,
-        displayName: _td("labs|new_room_list"),
-        description: _td("labs|under_active_development"),
-        isFeature: true,
-        default: true,
-        controller: new ReloadOnChangeController(),
-    },
-    "feature_room_list_sections": {
-        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS_WITH_CONFIG_PRIORITISED,
-        labsGroup: LabGroup.Ui,
-        displayName: _td("labs|room_list_sections"),
-        description: _td("labs|under_active_development"),
+        displayName: _td("labs|login_with_qr"),
+        description: _td("labs|config_only"),
         isFeature: true,
         default: false,
-        controller: new ReloadOnChangeController(),
     },
     /**
      * With the transition to Compound we are moving to a base font size
@@ -799,6 +775,22 @@ export const SETTINGS: Settings = {
         ),
         default: false,
     },
+    "feature_retention": {
+        isFeature: true,
+        labsGroup: LabGroup.Messaging,
+        displayName: _td("labs|feature_retention|display_name"),
+        description: _td("labs|feature_retention|description"),
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS_WITH_CONFIG_PRIORITISED,
+        supportedLevelsAreOrdered: true,
+        controller: new IncompatibleController(
+            "feature_sliding_sync",
+            false,
+            true,
+            _td("labs|feature_retention|disabled_sliding_sync"),
+            true,
+        ),
+        default: false,
+    },
     "useCompactLayout": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         displayName: _td("settings|preferences|compact_modern"),
@@ -906,14 +898,6 @@ export const SETTINGS: Settings = {
         displayName: _td("settings|big_emoji"),
         default: true,
         invertedSettingName: "TextualBody.disableBigEmoji",
-    },
-    "MessageComposerInput.isRichTextEnabled": {
-        supportedLevels: LEVELS_ACCOUNT_SETTINGS,
-        default: false,
-    },
-    "MessageComposer.showFormatting": {
-        supportedLevels: LEVELS_ACCOUNT_SETTINGS,
-        default: false,
     },
     "sendTypingNotifications": {
         supportedLevels: LEVELS_ACCOUNT_SETTINGS,
@@ -1132,7 +1116,7 @@ export const SETTINGS: Settings = {
     "urlPreviewsEnabled": {
         // Enabled by default and client configurable as this setting only allows unencrypted
         // messages to be previewed.
-        supportedLevels: [SettingLevel.DEVICE, SettingLevel.ACCOUNT, SettingLevel.CONFIG],
+        supportedLevels: [SettingLevel.ROOM_DEVICE, SettingLevel.DEVICE, SettingLevel.ACCOUNT, SettingLevel.CONFIG],
         supportedLevelsAreOrdered: true,
         displayName: _td("settings|inline_url_previews_default"),
         default: true,
@@ -1260,13 +1244,6 @@ export const SETTINGS: Settings = {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         displayName: _td("settings|security|message_search_sleep_time"),
         default: 3000,
-    },
-    "showCallButtonsInComposer": {
-        // Dev note: This is no longer "in composer" but is instead "in room header".
-        // TODO: Rename with settings v3
-        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS_WITH_CONFIG,
-        default: true,
-        controller: new UIFeatureController(UIFeature.Voip),
     },
     "ircDisplayNameWidth": {
         // We specifically want to have room-device > device so that users may set a device default

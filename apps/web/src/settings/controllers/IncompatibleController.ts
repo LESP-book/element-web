@@ -8,8 +8,8 @@ Please see LICENSE files in the repository root for full details.
 
 import SettingController from "./SettingController";
 import { type SettingLevel } from "../SettingLevel";
-import SettingsStore from "../SettingsStore";
 import { type BooleanSettingKey } from "../Settings.tsx";
+import PlatformPeg from "../../PlatformPeg.ts";
 
 /**
  * Enforces that a boolean setting cannot be enabled if the incompatible setting
@@ -21,6 +21,8 @@ export default class IncompatibleController extends SettingController {
         private settingName: BooleanSettingKey,
         private forcedValue: any = false,
         private incompatibleValue: any | ((v: any) => boolean) = true,
+        private readonly disabledMessage?: string,
+        private readonly forceReload = false,
     ) {
         super();
     }
@@ -37,14 +39,23 @@ export default class IncompatibleController extends SettingController {
         return null; // no override
     }
 
-    public get settingDisabled(): boolean {
-        return this.incompatibleSetting;
+    public get settingDisabled(): boolean | string {
+        if (this.incompatibleSetting) {
+            return this.disabledMessage ?? true;
+        }
+        return false;
     }
 
     public get incompatibleSetting(): boolean {
         if (typeof this.incompatibleValue === "function") {
-            return this.incompatibleValue(SettingsStore.getValue(this.settingName));
+            return this.incompatibleValue(this.settingsStore.getValue(this.settingName));
         }
-        return SettingsStore.getValue(this.settingName) === this.incompatibleValue;
+        return this.settingsStore.getValue(this.settingName) === this.incompatibleValue;
+    }
+
+    public onChange(): void {
+        if (this.forceReload) {
+            PlatformPeg.get()?.reload();
+        }
     }
 }
