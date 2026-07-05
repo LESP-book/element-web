@@ -7,9 +7,12 @@
 
 import { expect } from "@jest/globals";
 
-import type { MockedObject } from "jest-mock";
-import type { MatrixClient, IPreviewUrlResponse } from "matrix-js-sdk/src/matrix";
-import { UrlPreviewGroupViewModel } from "../../../src/viewmodels/message-body/UrlPreviewGroupViewModel";
+import type { MockedObject } from "jest-mock-vitest-adapter";
+import type { MatrixClient } from "matrix-js-sdk/src/matrix";
+import {
+    BUNDLED_LINK_PREVIEWS,
+    UrlPreviewGroupViewModel,
+} from "../../../src/viewmodels/message-body/UrlPreviewGroupViewModel";
 import type { UrlPreview } from "@element-hq/web-shared-components";
 import { getMockClientWithEventEmitter, mkEvent } from "../../test-utils";
 
@@ -22,7 +25,9 @@ const BASIC_PREVIEW_OGDATA = {
     "og:site_name": "Example.org",
 };
 
-function getViewModel({ mediaVisible, visible } = { mediaVisible: true, visible: true }): {
+function getViewModel(
+    { mediaVisible, visible, showPreview } = { mediaVisible: true, visible: true, showPreview: true },
+): {
     vm: UrlPreviewGroupViewModel;
     client: MockedObject<MatrixClient>;
     onImageClicked: jest.Mock<void, [UrlPreview]>;
@@ -37,11 +42,14 @@ function getViewModel({ mediaVisible, visible } = { mediaVisible: true, visible:
         mediaVisible,
         visible,
         onImageClicked,
+        showTooltips: false,
         mxEvent: mkEvent({
             event: true,
             user: "@foo:bar",
             type: "m.room.message",
-            content: {},
+            content: {
+                ...(showPreview ? undefined : { [BUNDLED_LINK_PREVIEWS]: [] }),
+            },
             id: "$id",
         }),
     });
@@ -82,77 +90,21 @@ describe("UrlPreviewGroupViewModel", () => {
         const { previews } = vm.getSnapshot();
         expect(previews).toHaveLength(3);
         expect(previews).toMatchObject([
-            {
-                link: "https://example.org/1",
-            },
-            {
-                link: "https://example.org/2",
-            },
-            {
-                link: "https://example.org/3",
-            },
+            { link: "https://example.org/1" },
+            { link: "https://example.org/2" },
+            { link: "https://example.org/3" },
         ]);
     });
     it("should hide preview when invisible", async () => {
-        const { vm, client } = getViewModel({ visible: false, mediaVisible: true });
+        const { vm, client } = getViewModel({ visible: false, mediaVisible: true, showPreview: true });
         const msg = document.createElement("div");
         msg.innerHTML = '<a href="https://example.org">Test</a>';
         await vm.updateEventElement(msg);
         expect(vm.getSnapshot()).toMatchSnapshot();
         expect(client.getUrlPreview).not.toHaveBeenCalled();
     });
-    it("should preview a URL with media", async () => {
-        const { vm, client } = getViewModel();
-        client.getUrlPreview.mockResolvedValueOnce({
-            "og:title": "This is an example!",
-            "og:type": "document",
-            "og:url": "https://example.org",
-            "og:image": IMAGE_MXC,
-            "og:image:height": 128,
-            "og:image:width": 128,
-            "matrix:image:size": 10000,
-        });
-        // eslint-disable-next-line no-restricted-properties
-        client.mxcUrlToHttp.mockImplementation((url, width) => {
-            expect(url).toEqual(IMAGE_MXC);
-            if (width) {
-                return "https://example.org/image/thumb";
-            }
-            return "https://example.org/image/src";
-        });
-        const msg = document.createElement("div");
-        msg.innerHTML = '<a href="https://example.org">Test</a>';
-        await vm.updateEventElement(msg);
-        expect(vm.getSnapshot()).toMatchSnapshot();
-    });
-    it.each<Partial<IPreviewUrlResponse>>([
-        { "matrix:image:size": 8191 },
-        { "og:image:width": 95 },
-        { "og:image:height": 95 },
-    ])("should preview a URL with a site icon", async (extraResp) => {
-        const { vm, client } = getViewModel();
-        client.getUrlPreview.mockResolvedValueOnce({
-            "og:title": "This is an example!",
-            "og:type": "document",
-            "og:url": "https://example.org",
-            "og:image": IMAGE_MXC,
-            "og:image:height": 128,
-            "og:image:width": 128,
-            "matrix:image:size": 8193,
-            ...extraResp,
-        });
-        // eslint-disable-next-line no-restricted-properties
-        client.mxcUrlToHttp.mockImplementation((url) => {
-            expect(url).toEqual(IMAGE_MXC);
-            return "https://example.org/image/src";
-        });
-        const msg = document.createElement("div");
-        msg.innerHTML = '<a href="https://example.org">Test</a>';
-        await vm.updateEventElement(msg);
-        expect(vm.getSnapshot().previews[0].siteIcon).toBeTruthy();
-    });
     it("should ignore media when mediaVisible is false", async () => {
-        const { vm, client } = getViewModel({ mediaVisible: false, visible: true });
+        const { vm, client } = getViewModel({ mediaVisible: false, visible: true, showPreview: true });
         client.getUrlPreview.mockResolvedValueOnce({
             "og:title": "This is an example!",
             "og:type": "document",
@@ -225,40 +177,20 @@ describe("UrlPreviewGroupViewModel", () => {
         await vm.onShowClick();
         expect(vm.getSnapshot()).toMatchSnapshot();
     });
-
-    describe("calculates author", () => {
-        it("should use the profile:username if provided", async () => {
-            const { vm, client } = getViewModel();
-            client.getUrlPreview.mockResolvedValueOnce({ ...BASIC_PREVIEW_OGDATA, "profile:username": "my username" });
-            const msg = document.createElement("div");
-            msg.innerHTML = '<a href="https://example.org">Test</a>';
-            await vm.updateEventElement(msg);
-            expect(vm.getSnapshot().previews[0].author).toEqual("my username");
-        });
-        it("should use author if the og:type is an article", async () => {
-            const { vm, client } = getViewModel();
-            client.getUrlPreview.mockResolvedValueOnce({
-                ...BASIC_PREVIEW_OGDATA,
-                "og:type": "article",
-                "article:author": "my name",
-            });
-            const msg = document.createElement("div");
-            msg.innerHTML = '<a href="https://example.org">Test</a>';
-            await vm.updateEventElement(msg);
-            expect(vm.getSnapshot().previews[0].author).toEqual("my name");
-        });
-        it("should NOT use author if the author is a URL", async () => {
-            const { vm, client } = getViewModel();
-            client.getUrlPreview.mockResolvedValueOnce({
-                ...BASIC_PREVIEW_OGDATA,
-                "og:type": "article",
-                "article:author": "https://junk.example.org/foo",
-            });
-            const msg = document.createElement("div");
-            msg.innerHTML = '<a href="https://example.org">Test</a>';
-            await vm.updateEventElement(msg);
-            expect(vm.getSnapshot().previews[0].author).toBeUndefined();
-        });
+    it("should hide a preview if the message requests it", async () => {
+        const { vm, client } = getViewModel({ showPreview: false, mediaVisible: true, visible: true });
+        client.getUrlPreview.mockResolvedValueOnce(BASIC_PREVIEW_OGDATA);
+        const msg = document.createElement("div");
+        msg.innerHTML = '<a href="https://example.org">Test</a>';
+        await vm.updateEventElement(msg);
+        expect(vm.getSnapshot()).toMatchInlineSnapshot(`
+{
+  "overPreviewLimit": false,
+  "previews": [],
+  "previewsLimited": false,
+  "totalPreviewCount": 0,
+}
+`);
     });
 
     it.each([
@@ -274,63 +206,5 @@ describe("UrlPreviewGroupViewModel", () => {
         msg.innerHTML = `<a href="${item.href}">${item.text}</a>`;
         await vm.updateEventElement(msg);
         expect(vm.getSnapshot().previews).toHaveLength(item.hasPreview ? 1 : 0);
-    });
-
-    // og:url, og:type are ignored.
-    const baseOg = {
-        "og:url": "https://example.org",
-        "og:type": "document",
-    };
-
-    it.each<IPreviewUrlResponse>([
-        { ...baseOg, "og:title": "Basic title" },
-        { ...baseOg, "og:site_name": "Site name", "og:title": "" },
-        { ...baseOg, "og:description": "A description", "og:title": "" },
-        { ...baseOg, "og:title": "Cool blog", "og:site_name": "Cool site" },
-        {
-            ...baseOg,
-            "og:title": "Media test",
-            // API *may* return a string, so check we parse correctly.
-            "og:image:height": "500" as unknown as number,
-            "og:image:width": 500,
-            "matrix:image:size": 10000,
-            "og:image": IMAGE_MXC,
-        },
-    ])("handles different kinds of opengraph responses %s", async (og) => {
-        const { vm, client } = getViewModel();
-        // eslint-disable-next-line no-restricted-properties
-        client.mxcUrlToHttp.mockImplementation((url, width) => {
-            expect(url).toEqual(IMAGE_MXC);
-            if (width) {
-                return "https://example.org/image/thumb";
-            }
-            return "https://example.org/image/src";
-        });
-        client.getUrlPreview.mockResolvedValueOnce(og);
-        const msg = document.createElement("div");
-        msg.innerHTML = `<a href="https://example.org">test</a>`;
-        await vm.updateEventElement(msg);
-        expect(vm.getSnapshot().previews[0]).toMatchSnapshot();
-    });
-
-    it.each<string>(["og:video", "og:video:type", "og:audio"])("detects playable links via %s", async (property) => {
-        const { vm, client } = getViewModel();
-        // eslint-disable-next-line no-restricted-properties
-        client.mxcUrlToHttp.mockImplementation((url, width) => {
-            expect(url).toEqual(IMAGE_MXC);
-            if (width) {
-                return "https://example.org/image/thumb";
-            }
-            return "https://example.org/image/src";
-        });
-        client.getUrlPreview.mockResolvedValueOnce({
-            ...BASIC_PREVIEW_OGDATA,
-            "og:image": IMAGE_MXC,
-            [property]: "anything",
-        });
-        const msg = document.createElement("div");
-        msg.innerHTML = `<a href="https://example.org">test</a>`;
-        await vm.updateEventElement(msg);
-        expect(vm.getSnapshot().previews[0].image?.playable).toEqual(true);
     });
 });

@@ -327,7 +327,7 @@ const InnerSpacePanel = React.memo<IInnerSpacePanelProps>(
                           }
                         : undefined
                 }
-                element="ul"
+                as="ul"
                 role="tree"
                 aria-label={_t("common|spaces")}
             >
@@ -405,8 +405,6 @@ const SpacePanel: React.FC = () => {
         }
     });
 
-    const newRoomListEnabled = useSettingValue("feature_new_room_list");
-
     const userMenuVm = useCreateAutoDisposedViewModel(
         () =>
             new UserMenuViewModel(
@@ -444,7 +442,6 @@ const SpacePanel: React.FC = () => {
                     <nav
                         className={classNames("mx_SpacePanel", {
                             collapsed: isPanelCollapsed,
-                            newUi: newRoomListEnabled,
                         })}
                         onKeyDown={(ev) => {
                             const navAction = getKeyBindingsManager().getNavigationAction(ev);

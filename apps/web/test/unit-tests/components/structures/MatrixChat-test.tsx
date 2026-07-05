@@ -6,10 +6,9 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import "fake-indexeddb/auto";
-import React, { type ComponentProps } from "react";
+import React, { type ComponentProps, createRef, type RefObject } from "react";
 import { fireEvent, render, type RenderResult, screen, waitFor, within, act } from "jest-matrix-react";
-import { type Mocked, mocked } from "jest-mock";
+import { type Mocked, mocked } from "jest-mock-vitest-adapter";
 import { ClientEvent, type MatrixClient, MatrixEvent, Room, SyncState } from "matrix-js-sdk/src/matrix";
 import { type MediaHandler } from "matrix-js-sdk/src/webrtc/mediaHandler";
 import * as MatrixJs from "matrix-js-sdk/src/matrix";
@@ -24,6 +23,8 @@ import {
     UserVerificationStatus,
     type CryptoApi,
 } from "matrix-js-sdk/src/crypto-api";
+import fetchMock from "@fetch-mock/jest";
+import * as qrLogin from "matrix-js-sdk/src/rendezvous";
 
 import MatrixChat from "../../../../src/components/structures/MatrixChat";
 import * as StorageAccess from "../../../../src/utils/StorageAccess";
@@ -66,9 +67,10 @@ import Modal from "../../../../src/Modal.tsx";
 import { SetupEncryptionStore } from "../../../../src/stores/SetupEncryptionStore.ts";
 import { ShareFormat } from "../../../../src/dispatcher/payloads/SharePayload.ts";
 import { clearStorage } from "../../../../src/Lifecycle";
-import RoomListStore from "../../../../src/stores/room-list/RoomListStore.ts";
 import UserSettingsDialog from "../../../../src/components/views/dialogs/UserSettingsDialog.tsx";
-import { SdkContextClass } from "../../../../src/contexts/SDKContext.ts";
+import { SDKContextClass } from "../../../../src/contexts/SDKContextClass";
+import { makeDelegatedAuthConfig } from "../../../test-utils/oidc.ts";
+import { type QrLoginCredentials } from "../../../../src/components/views/auth/LoginWithQR.tsx";
 
 jest.mock("matrix-js-sdk/src/oidc/authorize", () => ({
     completeAuthorizationCodeGrant: jest.fn(),
@@ -81,6 +83,31 @@ jest.mock("../../../../src/theme");
 
 /** The matrix versions our mock server claims to support */
 const SERVER_SUPPORTED_MATRIX_VERSIONS = ["v1.1", "v1.5", "v1.6", "v1.8", "v1.9"];
+
+function createMockCrypto(): CryptoApi {
+    return {
+        getVersion: jest.fn().mockReturnValue("Version 0"),
+        getVerificationRequestsToDeviceInProgress: jest.fn().mockReturnValue([]),
+        getUserDeviceInfo: jest.fn().mockReturnValue({
+            get: jest
+                .fn()
+                .mockReturnValue(
+                    new Map([
+                        [
+                            "devid",
+                            { deviceId: "devid", dehydrated: false, getIdentityKey: jest.fn().mockReturnValue("k") },
+                        ],
+                    ]),
+                ),
+        }),
+        getUserVerificationStatus: jest.fn().mockResolvedValue(new UserVerificationStatus(true, true, false)),
+        setDeviceIsolationMode: jest.fn(),
+        isDehydrationSupported: jest.fn().mockReturnValue(false),
+        getDeviceVerificationStatus: jest.fn().mockResolvedValue({ signedByOwner: true } as DeviceVerificationStatus),
+        isCrossSigningReady: jest.fn().mockReturnValue(false),
+        requestOwnUserVerification: jest.fn().mockResolvedValue({ cancel: jest.fn(), on: jest.fn() }),
+    } as any;
+}
 
 describe("<MatrixChat />", () => {
     const userId = "@alice:server.org";
@@ -179,8 +206,11 @@ describe("<MatrixChat />", () => {
         warning: "",
     };
     let defaultProps: ComponentProps<typeof MatrixChat>;
-    const getComponent = (props: Partial<ComponentProps<typeof MatrixChat>> = {}) => {
-        return render(<MatrixChat {...defaultProps} {...props} />);
+    const getComponent = (
+        props: Partial<ComponentProps<typeof MatrixChat>> = {},
+        ref?: RefObject<MatrixChat | null>,
+    ) => {
+        return render(<MatrixChat {...defaultProps} {...props} ref={ref} />);
     };
 
     // make test results readable
@@ -290,25 +320,137 @@ describe("<MatrixChat />", () => {
     it("should notify resizenotifier when left panel hidden", async () => {
         getComponent();
 
-        jest.spyOn(SdkContextClass.instance.resizeNotifier, "notifyLeftHandleResized");
+        jest.spyOn(SDKContextClass.instance.resizeNotifier, "notifyLeftHandleResized");
 
         defaultDispatcher.dispatch({ action: "hide_left_panel" });
 
         await waitFor(() =>
-            expect(mocked(SdkContextClass.instance.resizeNotifier.notifyLeftHandleResized)).toHaveBeenCalled(),
+            expect(mocked(SDKContextClass.instance.resizeNotifier.notifyLeftHandleResized)).toHaveBeenCalled(),
         );
     });
 
     it("should notify resizenotifier when left panel shown", async () => {
         getComponent();
 
-        jest.spyOn(SdkContextClass.instance.resizeNotifier, "notifyLeftHandleResized");
+        jest.spyOn(SDKContextClass.instance.resizeNotifier, "notifyLeftHandleResized");
 
         defaultDispatcher.dispatch({ action: "show_left_panel" });
 
         await waitFor(() =>
-            expect(mocked(SdkContextClass.instance.resizeNotifier.notifyLeftHandleResized)).toHaveBeenCalled(),
+            expect(mocked(SDKContextClass.instance.resizeNotifier.notifyLeftHandleResized)).toHaveBeenCalled(),
         );
+    });
+
+    describe("qr login", () => {
+        beforeEach(() => {
+            const authConfig = makeDelegatedAuthConfig();
+            defaultProps.config.validated_server_config!.delegatedAuthentication = authConfig;
+            fetchMock.post(authConfig.registration_endpoint!, { client_id: "abc123" });
+            mockPlatformPeg({
+                getOidcClientMetadata: jest.fn().mockReturnValue({
+                    clientName: "App name",
+                    clientUri: "https://company",
+                    redirectUris: ["https://app"],
+                    logoUri: "https://company/logo.png",
+                    applicationType: "web",
+                }),
+            });
+            jest.spyOn(qrLogin, "signInByGeneratingQR").mockReturnValue(new Promise(() => {}));
+        });
+
+        it("should open QrLoginDialog on ViewQrLogin action", async () => {
+            getComponent();
+            defaultDispatcher.fire(Action.ViewQrLogin);
+            await expect(screen.findByRole("dialog", { name: "Sign in with QR code" })).resolves.toMatchSnapshot();
+        });
+
+        it("should ignore ViewQrLogin action when logged in", async () => {
+            await populateStorageForSession();
+            getComponent();
+            // wait for logged in view to load
+            await screen.findByLabelText("User menu");
+
+            defaultDispatcher.fire(Action.ViewQrLogin);
+            expect(screen.queryByRole("dialog", { name: "Sign in with QR code" })).not.toBeInTheDocument();
+        });
+
+        it("should fire ViewQrLogin action on 'qr_login' route", async () => {
+            const ref = createRef<MatrixChat>();
+            getComponent({}, ref);
+            ref.current!.showScreen("qr_login");
+            await expect(screen.findByRole("dialog", { name: "Sign in with QR code" })).resolves.toMatchSnapshot();
+        });
+
+        it("should handle qr login completed", async () => {
+            const qrCreds: QrLoginCredentials = {
+                accessToken: "at",
+                homeserverUrl: "https://homeserver",
+                clientId: "ci",
+                idToken: "it",
+                issuer: defaultProps.config.validated_server_config!.delegatedAuthentication!.issuer,
+                deviceId: "di",
+                secrets: {
+                    cross_signing: {
+                        master_key: "mk",
+                        self_signing_key: "ssk",
+                        user_signing_key: "usk",
+                    },
+                },
+            };
+
+            mockClient.whoami.mockResolvedValue({ user_id: "@user:homeserver", device_id: qrCreds.deviceId });
+            mockClient.getCrypto.mockReturnValue({
+                ...createMockCrypto(),
+                crossSignDevice: jest.fn().mockResolvedValue(undefined),
+                importSecretsBundle: jest.fn().mockResolvedValue(undefined),
+            });
+            getComponent();
+
+            const createDialogSpy = jest.spyOn(Modal, "createDialog").mockReturnValue({} as any);
+
+            // Assert welcome screen
+            await screen.findByText("Welcome to Test");
+
+            // Open QR dialog so we can grab the onLoggedIn method
+            defaultDispatcher.fire(Action.ViewQrLogin, true);
+            expect(createDialogSpy).toHaveBeenCalledWith(
+                expect.anything(),
+                {
+                    onLoggedIn: expect.any(Function),
+                    serverConfig: defaultProps.config.validated_server_config,
+                },
+                "mx_LoginWithQR_dialog",
+                false,
+                true,
+            );
+            const { onLoggedIn } = createDialogSpy.mock.calls[0][1] as {
+                onLoggedIn(creds: QrLoginCredentials): Promise<void>;
+            };
+
+            const configureFromCompletedSpy = jest.spyOn(Lifecycle, "configureFromCompletedOAuthLogin");
+            const restoreSessionSpy = jest.spyOn(Lifecycle, "restoreSessionFromStorage");
+            const prom = onLoggedIn(qrCreds);
+
+            await waitFor(() =>
+                expect(configureFromCompletedSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        accessToken: qrCreds.accessToken,
+                        homeserverUrl: qrCreds.homeserverUrl,
+                    }),
+                ),
+            );
+            await waitFor(() => expect(restoreSessionSpy).toHaveBeenCalled());
+            await waitFor(() =>
+                expect(mockClient.getCrypto()!.importSecretsBundle).toHaveBeenCalledWith(qrCreds.secrets),
+            );
+
+            await prom;
+
+            // initial sync
+            mockClient.emit(ClientEvent.Sync, SyncState.Prepared, null);
+            // wait for logged in view to load
+            await screen.findByLabelText("User menu");
+        });
     });
 
     describe("when query params have a OIDC params", () => {
@@ -331,7 +473,7 @@ describe("<MatrixChat />", () => {
 
         const tokenResponse: BearerTokenResponse = {
             access_token: accessToken,
-            refresh_token: "def456",
+            refresh_token: undefined,
             id_token: "ghi789",
             scope: "test",
             token_type: "Bearer",
@@ -501,12 +643,6 @@ describe("<MatrixChat />", () => {
         });
 
         describe("when login succeeds", () => {
-            beforeEach(() => {
-                jest.spyOn(StorageAccess, "idbLoad").mockImplementation(
-                    async (_table: string, key: string | string[]) => (key === "mx_access_token" ? accessToken : null),
-                );
-            });
-
             afterEach(() => {
                 SettingsStore.reset();
             });
@@ -679,7 +815,7 @@ describe("<MatrixChat />", () => {
                     await waitFor(() =>
                         expect(createDialog).toHaveBeenCalledWith(
                             UserSettingsDialog,
-                            { initialTabId: UserTab.SessionManager, sdkContext: expect.any(SdkContextClass) },
+                            { initialTabId: UserTab.SessionManager, sdkContext: expect.any(SDKContextClass) },
                             /*className=*/ undefined,
                             /*isPriority=*/ false,
                             /*isStatic=*/ true,
@@ -709,9 +845,6 @@ describe("<MatrixChat />", () => {
                     it("should dispatch after_forget_room action on successful forget", async () => {
                         await clearAllModals();
                         await getComponentAndWaitForReady();
-
-                        // Mock out the old room list store
-                        jest.spyOn(RoomListStore.instance, "manualRoomUpdate").mockImplementation(async () => {});
 
                         // Register a mock function to the dispatcher
                         const fn = jest.fn();
@@ -1186,37 +1319,6 @@ describe("<MatrixChat />", () => {
                     await screen.findByRole("heading", { name: "Confirm your digital identity", level: 2 });
                 });
             });
-
-            function createMockCrypto(): CryptoApi {
-                return {
-                    getVersion: jest.fn().mockReturnValue("Version 0"),
-                    getVerificationRequestsToDeviceInProgress: jest.fn().mockReturnValue([]),
-                    getUserDeviceInfo: jest.fn().mockReturnValue({
-                        get: jest.fn().mockReturnValue(
-                            new Map([
-                                [
-                                    "devid",
-                                    {
-                                        deviceId: "devid",
-                                        dehydrated: false,
-                                        getIdentityKey: jest.fn().mockReturnValue("k"),
-                                    },
-                                ],
-                            ]),
-                        ),
-                    }),
-                    getUserVerificationStatus: jest
-                        .fn()
-                        .mockResolvedValue(new UserVerificationStatus(true, true, false)),
-                    setDeviceIsolationMode: jest.fn(),
-                    isDehydrationSupported: jest.fn().mockReturnValue(false),
-                    getDeviceVerificationStatus: jest
-                        .fn()
-                        .mockResolvedValue({ signedByOwner: true } as DeviceVerificationStatus),
-                    isCrossSigningReady: jest.fn().mockReturnValue(false),
-                    requestOwnUserVerification: jest.fn().mockResolvedValue({ cancel: jest.fn(), on: jest.fn() }),
-                } as any;
-            }
         });
 
         describe("showScreen", () => {
@@ -1257,7 +1359,7 @@ describe("<MatrixChat />", () => {
             // but as the exception was swallowed, the test was passing (see in `initClientCrypto`).
             // There are several uses of the peg in the app, so during all these tests you might end-up
             // with a real client instead of the mocked one. Not sure how reliable all these tests are.
-            jest.spyOn(MatrixClientPeg, "replaceUsingCreds");
+            jest.spyOn(MatrixClientPeg, "set");
             jest.spyOn(MatrixClientPeg, "get").mockReturnValue(mockClient);
 
             const result = getComponent();

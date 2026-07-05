@@ -53,12 +53,12 @@ jobs:
         outputs:
             nightly-version: ${{ steps.versions.outputs.nightly }}
         steps:
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+            - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
               with:
                   persist-credentials: false
                   repository: element-hq/element-web
 
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+            - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
             - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
               with:
                   node-version-file: apps/desktop/.node-version
@@ -143,7 +143,7 @@ jobs:
             - name: "[Release] Fetch release"
               id: release
               if: ${{ !inputs.nightly && inputs.version != 'develop' }}
-              uses: cardinalby/git-get-release-action@5172c3a026600b1d459b117738c605fabc9e4e44 # 1.2.5
+              uses: cardinalby/git-get-release-action@2ab178299eecb253f820dcf2cce11f62be1178f7 # 1.2.6
               env:
                   GITHUB_TOKEN: ${{ github.token }}
               with:
