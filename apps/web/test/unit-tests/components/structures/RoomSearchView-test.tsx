@@ -8,7 +8,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React from "react";
 import { mocked } from "jest-mock";
-import { render, screen } from "jest-matrix-react";
+import { fireEvent, render, screen, waitFor } from "jest-matrix-react";
 import {
     Room,
     type MatrixClient,
@@ -25,8 +25,8 @@ import MatrixClientContext from "../../../../src/contexts/MatrixClientContext";
 import { MatrixClientPeg } from "../../../../src/MatrixClientPeg";
 import { searchPagination, SearchScope } from "../../../../src/Searching";
 import { SDKContextClass } from "../../../../src/contexts/SDKContextClass";
-import SettingsStore from "../../../../src/settings/SettingsStore.ts";
-import { SettingLevel } from "../../../../src/settings/SettingLevel.ts";
+import dis from "../../../../src/dispatcher/dispatcher";
+import { Action } from "../../../../src/dispatcher/actions";
 
 jest.mock("../../../../src/Searching", () => ({
     searchPagination: jest.fn(),
@@ -126,9 +126,12 @@ describe("<RoomSearchView/>", () => {
             clientAndSDKContextRenderOptions(client, sdkContext),
         );
 
-        await screen.findByText("Before");
         await screen.findByText("Foo Test Bar");
-        await screen.findByText("After");
+        expect(screen.getByText(/!room:server/)).toBeInTheDocument();
+        expect(screen.getByText("1/1/1970")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "View in room" })).toBeInTheDocument();
+        expect(screen.queryByText("Before")).not.toBeInTheDocument();
+        expect(screen.queryByText("After")).not.toBeInTheDocument();
     });
 
     it("should highlight words correctly", async () => {
@@ -228,7 +231,7 @@ describe("<RoomSearchView/>", () => {
         });
         const onUpdate = jest.fn();
 
-        const { rerender } = render(
+        const { container, rerender } = render(
             <RoomSearchView
                 inProgress={true}
                 term="search term"
@@ -241,8 +244,9 @@ describe("<RoomSearchView/>", () => {
         );
 
         await screen.findByRole("progressbar");
-        await screen.findByText("Potato");
+        expect(container.querySelector(".mx_RoomSearchResultItem_snippet")).toHaveTextContent("Foo Test Bar");
         expect(onUpdate).toHaveBeenCalledWith(false, expect.objectContaining({}), null);
+        expect(screen.getByRole("button", { name: "Show more" })).toHaveAttribute("aria-disabled", "true");
 
         rerender(
             <RoomSearchView
@@ -255,7 +259,14 @@ describe("<RoomSearchView/>", () => {
             />,
         );
 
-        expect(screen.queryByRole("progressbar")).toBeFalsy();
+        const showMore = await screen.findByRole("button", { name: "Show more" });
+        expect(showMore).not.toHaveAttribute("aria-disabled", "true");
+        fireEvent.click(showMore);
+        await screen.findByText("Potato");
+        expect(searchPagination).toHaveBeenCalledWith(client, expect.objectContaining({ next_batch: "next_batch" }));
+        await waitFor(() => {
+            expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+        });
     });
 
     it("should handle resolutions after unmounting sanely", async () => {
@@ -413,7 +424,7 @@ describe("<RoomSearchView/>", () => {
             count: 1,
         };
 
-        render(
+        const { container } = render(
             <RoomSearchView
                 inProgress={false}
                 term="search term"
@@ -425,29 +436,23 @@ describe("<RoomSearchView/>", () => {
             clientAndSDKContextRenderOptions(client, sdkContext),
         );
 
-        const beforeNode = await screen.findByText("Before");
-        const fooNode = await screen.findByText("Foo");
-        const betweenNode = await screen.findByText("Between");
-        const foo2Node = await screen.findByText("Foo2");
-        const afterNode = await screen.findByText("After");
-
-        expect((await screen.findAllByText("Between")).length).toBe(1);
-
-        expect(beforeNode.compareDocumentPosition(fooNode) == Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(fooNode.compareDocumentPosition(betweenNode) == Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(betweenNode.compareDocumentPosition(foo2Node) == Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(foo2Node.compareDocumentPosition(afterNode) == Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(await screen.findByText("Foo", { exact: true })).toBeInTheDocument();
+        expect(await screen.findByText("Foo2", { exact: true })).toBeInTheDocument();
+        expect(container.querySelectorAll(".mx_RoomSearchResultItem")).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: "View in room" })).toHaveLength(2);
+        expect(screen.queryByText("Before")).not.toBeInTheDocument();
+        expect(screen.queryByText("Between")).not.toBeInTheDocument();
+        expect(screen.queryByText("After")).not.toBeInTheDocument();
     });
 
-    it("should pass appropriate permalink creator for all rooms search", async () => {
-        await SettingsStore.setValue("alwaysShowTimestamps", null, SettingLevel.DEVICE, true);
+    it("should group all-room results and expose jump actions", async () => {
         const room2 = new Room("!room2:server", client, client.getSafeUserId());
         const room3 = new Room("!room3:server", client, client.getSafeUserId());
         mocked(client.getRoom).mockImplementation(
             (roomId) => [room, room2, room3].find((r) => r.roomId === roomId) ?? null,
         );
 
-        render(
+        const { container } = render(
             <RoomSearchView
                 inProgress={false}
                 term="search term"
@@ -540,28 +545,29 @@ describe("<RoomSearchView/>", () => {
             clientAndSDKContextRenderOptions(client, sdkContext),
         );
 
-        const event1 = await screen.findByText("Room 1");
-        expect(event1.closest(".mx_EventTile_line")!.querySelector("a")).toHaveAttribute(
-            "href",
-            `https://matrix.to/#/${room.roomId}/$2`,
-        );
+        await screen.findByText("Room 1");
+        await screen.findByText("Room 2");
+        await screen.findByText("Room 2 message 2");
+        await screen.findByText("Room 3");
 
-        const event2 = await screen.findByText("Room 2");
-        expect(event2.closest(".mx_EventTile_line")!.querySelector("a")).toHaveAttribute(
-            "href",
-            `https://matrix.to/#/${room2.roomId}/$22`,
+        const resultItems = Array.from(container.querySelectorAll<HTMLElement>(".mx_RoomSearchResultItem"));
+        expect(resultItems).toHaveLength(4);
+        expect(new Set(resultItems.map((item) => item.dataset.scrollTokens))).toEqual(
+            new Set(["$2", "$22", "$23", "$32"]),
         );
+        expect(resultItems.every((item) => item.querySelector(".mx_RoomSearchResultItem_jump"))).toBe(true);
 
-        const event2Message2 = await screen.findByText("Room 2 message 2");
-        expect(event2Message2.closest(".mx_EventTile_line")!.querySelector("a")).toHaveAttribute(
-            "href",
-            `https://matrix.to/#/${room2.roomId}/$23`,
+        const dispatchSpy = jest.spyOn(dis, "dispatch");
+        const roomOneResult = container.querySelector<HTMLElement>('li[data-scroll-tokens="$2"]');
+        fireEvent.click(roomOneResult!.querySelector(".mx_RoomSearchResultItem_jump")!);
+        expect(dispatchSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                action: Action.ViewRoom,
+                event_id: "$2",
+                highlighted: true,
+                room_id: room.roomId,
+            }),
         );
-
-        const event3 = await screen.findByText("Room 3");
-        expect(event3.closest(".mx_EventTile_line")!.querySelector("a")).toHaveAttribute(
-            "href",
-            `https://matrix.to/#/${room3.roomId}/$32`,
-        );
+        dispatchSpy.mockRestore();
     });
 });

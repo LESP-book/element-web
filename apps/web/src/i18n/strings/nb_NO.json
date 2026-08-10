@@ -1,6 +1,5 @@
 {
     "a11y": {
-        "emoji_picker": "Emoji-velger",
         "jump_first_invite": "Hopp til den første invitasjonen.",
         "message_composer": "Meldingsfelt",
         "n_unread_messages": {
@@ -467,7 +466,6 @@
         "encrypted": "Kryptert",
         "error": "Feil",
         "faq": "Ofte Stilte Spørsmål",
-        "favourites": "Favoritter",
         "feedback": "Tilbakemelding",
         "filter_results": "Filtrerresultater",
         "forward_message": "Videresend melding",
@@ -491,7 +489,6 @@
         "message_layout": "Meldingsoppsett",
         "message_timestamp_invalid": "Ugyldig tidsstempel",
         "microphone": "Mikrofon",
-        "model": "Modell",
         "moderation_and_safety": "Moderasjon og sikkerhet",
         "modern": "Moderne",
         "mute": "Demp",
@@ -889,22 +886,6 @@
     },
     "dialog_close_label": "Lukk dialog",
     "download_completed": "Nedlasting fullført",
-    "emoji": {
-        "categories": "Kategorier",
-        "category_activities": "Aktiviteter",
-        "category_animals_nature": "Dyreliv og natur",
-        "category_flags": "Flagg",
-        "category_food_drink": "Mat og drikke",
-        "category_frequently_used": "Ofte brukte",
-        "category_objects": "Objekter",
-        "category_smileys_people": "Smilefjes og folk",
-        "category_symbols": "Symboler",
-        "category_travel_places": "Reise og steder",
-        "quick_reactions": "Hurtigreaksjoner"
-    },
-    "emoji_picker": {
-        "cancel_search_label": "Avbryt søket"
-    },
     "empty_room": "Tomt rom",
     "empty_room_was_name": "Tomt rom (var %(oldName)s)",
     "encryption": {
@@ -1482,7 +1463,6 @@
         "extended_profiles_msc_support": "Krever at serveren din støtter MSC4133",
         "feature_disable_call_per_sender_encryption": "Deaktiver kryptering per avsender for Element Call",
         "feature_wysiwyg_composer_description": "Bruk rik tekst i stedet for Markdown i meldingsskriveren.",
-        "group_calls": "Ny opplevelse for gruppesamtaler",
         "group_developer": "Utvikler",
         "group_encryption": "Kryptering",
         "group_experimental": "Eksperimentelt",
@@ -2780,7 +2760,6 @@
         "send_typing_notifications": "Send varsler om at du skriver",
         "sessions": {
             "best_security_note": "For best mulig sikkerhet bør du verifisere sesjonene dine og logge ut av alle sesjoner du ikke kjenner igjen eller ikke bruker lenger.",
-            "browser": "Nettleser",
             "confirm_sign_out": {
                 "one": "Bekreft at du logger av denne enheten",
                 "other": "Bekreft at du logger av disse enhetene"
@@ -2831,7 +2810,6 @@
             "no_sessions": "Ingen sesjoner funnet.",
             "no_unverified_sessions": "Ingen ubekreftede sesjoner funnet.",
             "no_verified_sessions": "Ingen verifiserte sesjoner funnet.",
-            "os": "Operativsystem",
             "other_sessions_heading": "Andre sesjoner",
             "push_heading": "Push-varsler",
             "push_subheading": "Motta push-varsler på denne sesjonen.",
@@ -2923,7 +2901,6 @@
             "audio_output": "Lydutdata",
             "audio_output_empty": "Ingen lydutdataer ble oppdaget",
             "auto_gain_control": "Automatisk forsterkningskontroll",
-            "connection_section": "Tilkobling",
             "dialog_title": "<strong>Innstillinger:</strong> Tale og video",
             "echo_cancellation": "Ekko-kansellering",
             "enable_fallback_ice_server": "Tillat reserveserver for anropsassistanse (%(server)s)",

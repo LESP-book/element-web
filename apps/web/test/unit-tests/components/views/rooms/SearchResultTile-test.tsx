@@ -8,14 +8,14 @@ Please see LICENSE files in the repository root for full details.
 
 import React from "react";
 import { MatrixEvent, Room, EventType } from "matrix-js-sdk/src/matrix";
-import { fireEvent } from "@testing-library/react";
-import { render, type RenderResult } from "jest-matrix-react";
+import { fireEvent, render, type RenderResult } from "jest-matrix-react";
 
-import { stubClient, withClientContextRenderOptions } from "../../../../test-utils";
+import { clientAndSDKContextRenderOptions, stubClient } from "../../../../test-utils";
 import SearchResultTile from "../../../../../src/components/views/rooms/SearchResultTile";
 import { MatrixClientPeg } from "../../../../../src/MatrixClientPeg";
 import dis from "../../../../../src/dispatcher/dispatcher";
 import { Action } from "../../../../../src/dispatcher/actions";
+import { SDKContextClass } from "../../../../../src/contexts/SDKContextClass.ts";
 
 const ROOM_ID = "!qPewotXpIctQySfjSy:localhost";
 
@@ -45,7 +45,7 @@ describe("SearchResultTile", () => {
 
         return render(
             <SearchResultTile resultEvent={defaultEvent} {...props} />,
-            withClientContextRenderOptions(MatrixClientPeg.safeGet()),
+            clientAndSDKContextRenderOptions(MatrixClientPeg.safeGet(), SDKContextClass.instance),
         );
     }
 

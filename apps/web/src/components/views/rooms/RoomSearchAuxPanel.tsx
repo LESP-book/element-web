@@ -9,7 +9,7 @@ Please see LICENSE files in the repository root for full details.
 import React from "react";
 import SearchIcon from "@vector-im/compound-design-tokens/assets/web/icons/search";
 import CloseIcon from "@vector-im/compound-design-tokens/assets/web/icons/close";
-import { IconButton } from "@vector-im/compound-web";
+import { IconButton, Link } from "@vector-im/compound-web";
 
 import { _t } from "../../../languageHandler";
 import { PosthogScreenTracker } from "../../../PosthogTrackers";
@@ -24,7 +24,9 @@ interface Props {
     onCancelClick(this: void): void;
 }
 
-const RoomSearchAuxPanel: React.FC<Props> = ({ searchInfo, isRoomEncrypted, onCancelClick }) => {
+const RoomSearchAuxPanel: React.FC<Props> = ({ searchInfo, isRoomEncrypted, onSearchScopeChange, onCancelClick }) => {
+    const scope = searchInfo?.scope ?? SearchScope.Room;
+
     return (
         <>
             <PosthogScreenTracker screenName="RoomSearch" />
@@ -43,10 +45,26 @@ const RoomSearchAuxPanel: React.FC<Props> = ({ searchInfo, isRoomEncrypted, onCa
                         ) : (
                             <InlineSpinner />
                         )}
-                        <SearchWarning kind={WarningKind.Search} isRoomEncrypted={isRoomEncrypted} showLogo={false} />
+                        <SearchWarning
+                            kind={WarningKind.Search}
+                            isRoomEncrypted={isRoomEncrypted}
+                            showLogo={false}
+                            scope={scope}
+                            roomId={searchInfo?.roomId}
+                        />
                     </div>
                 </div>
                 <div className="mx_RoomSearchAuxPanel_buttons">
+                    <Link
+                        onClick={() =>
+                            onSearchScopeChange(scope === SearchScope.Room ? SearchScope.All : SearchScope.Room)
+                        }
+                        kind="primary"
+                    >
+                        {scope === SearchScope.All
+                            ? _t("room|search|this_room_button")
+                            : _t("room|search|all_rooms_button")}
+                    </Link>
                     <IconButton
                         onClick={onCancelClick}
                         destructive
