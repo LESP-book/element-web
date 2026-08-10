@@ -49,10 +49,10 @@ function parseLocalNextBatch(nextBatch?: string): { exhausted: boolean } | null 
     try {
         const parsed = JSON.parse(nextBatch);
         if (parsed && typeof parsed === "object" && "exhausted" in parsed) {
-            return { exhausted: Boolean((parsed as any).exhausted) };
+            return { exhausted: Boolean(parsed.exhausted) };
         }
     } catch {
-        // Ignore: server-side next_batch is an opaque string, not JSON.
+        // 服务端的 next_batch 是不透明字符串，不是 JSON，解析失败时继续按服务端分页令牌处理。
     }
     return null;
 }
@@ -96,7 +96,7 @@ const SNIPPET_FALLBACK_LENGTH = 120;
 
 function getSearchableMessageBody(event: MatrixEvent): string | null {
     if (event.getType() !== "m.room.message") return null;
-    const content = event.getContent() as any;
+    const content = event.getContent();
     const msgtype = content?.msgtype;
     if (typeof msgtype !== "string" || !TEXT_MESSAGE_TYPES.has(msgtype)) return null;
     const body = content?.body;
@@ -104,7 +104,10 @@ function getSearchableMessageBody(event: MatrixEvent): string | null {
     return body;
 }
 
-function buildSnippet(body: string, highlights: string[]): { snippet: string; prefixEllipsis: boolean; suffixEllipsis: boolean } {
+function buildSnippet(
+    body: string,
+    highlights: string[],
+): { snippet: string; prefixEllipsis: boolean; suffixEllipsis: boolean } {
     const normalised = body.replace(/\s+/g, " ").trim();
     if (!normalised) return { snippet: "", prefixEllipsis: false, suffixEllipsis: false };
 
@@ -381,97 +384,100 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
         };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const loadMoreMessages = useCallback(async (pages: number): Promise<boolean> => {
-        const baseResults = resultsRef.current;
-        if (!baseResults || inProgress || isBackfilling || isLoadingMore.current) return false;
-        isLoadingMore.current = true;
-        setIsPaginating(true);
+    const loadMoreMessages = useCallback(
+        async (pages: number): Promise<boolean> => {
+            const baseResults = resultsRef.current;
+            if (!baseResults || inProgress || isBackfilling || isLoadingMore.current) return false;
+            isLoadingMore.current = true;
+            setIsPaginating(true);
 
-        try {
-            let currentResults: ISearchResults = baseResults;
-            const baseCount = currentResults.results?.length ?? 0;
-            let lastResultCount = baseCount;
+            try {
+                let currentResults: ISearchResults = baseResults;
+                const baseCount = currentResults.results?.length ?? 0;
+                let lastResultCount = baseCount;
 
-            const paginateUpTo = async (maxPages: number): Promise<void> => {
-                let pagesAfterFirstHitRemaining = 0;
-                for (let i = 0; i < maxPages; i++) {
-                    if (aborted.current) return;
-                    const prevNextBatch = currentResults.next_batch;
-                    const nextBatchInfo = parseLocalNextBatch(prevNextBatch);
-                    const canPaginate =
-                        Boolean(currentResults.next_batch) && (!nextBatchInfo || !nextBatchInfo.exhausted);
-                    if (!canPaginate) return;
-                    debuglog("requesting more search results");
-                    const next = await handleSearchResult(searchPagination(client, currentResults), true);
-                    if (!next) return;
-                    const newCount = next.results?.length ?? 0;
-                    const nextNextBatch = next.next_batch;
+                const paginateUpTo = async (maxPages: number): Promise<void> => {
+                    let pagesAfterFirstHitRemaining = 0;
+                    for (let i = 0; i < maxPages; i++) {
+                        if (aborted.current) return;
+                        const prevNextBatch = currentResults.next_batch;
+                        const nextBatchInfo = parseLocalNextBatch(prevNextBatch);
+                        const canPaginate =
+                            Boolean(currentResults.next_batch) && (!nextBatchInfo || !nextBatchInfo.exhausted);
+                        if (!canPaginate) return;
+                        debuglog("requesting more search results");
+                        const next = await handleSearchResult(searchPagination(client, currentResults), true);
+                        if (!next) return;
+                        const newCount = next.results?.length ?? 0;
+                        const nextNextBatch = next.next_batch;
 
-                    // 本地搜索可能会出现“本页无新增匹配，但扫描游标已推进”的情况：
-                    // 例如连续 MAX_SCAN_RECORDS 条都不包含关键字，此时 results 不增长但 next_batch.key 会变。
-                    // 如果我们在这里直接停止，会导致无法继续向更老历史推进，从而表现为“显示更多没反应/搜不到更早消息”。
-                    if (newCount > lastResultCount) {
-                        lastResultCount = newCount;
-                        // 命中到新结果后，再额外多扫几页，让用户一次看到“更多”而不是只多 1 条。
-                        if (pagesAfterFirstHitRemaining === 0) {
-                            pagesAfterFirstHitRemaining = Math.min(5, maxPages - i - 1);
+                        // 本地搜索可能会出现“本页无新增匹配，但扫描游标已推进”的情况：
+                        // 例如连续 MAX_SCAN_RECORDS 条都不包含关键字，此时 results 不增长但 next_batch.key 会变。
+                        // 如果我们在这里直接停止，会导致无法继续向更老历史推进，从而表现为“显示更多没反应/搜不到更早消息”。
+                        if (newCount > lastResultCount) {
+                            lastResultCount = newCount;
+                            // 命中到新结果后，再额外多扫几页，让用户一次看到“更多”而不是只多 1 条。
+                            if (pagesAfterFirstHitRemaining === 0) {
+                                pagesAfterFirstHitRemaining = Math.min(5, maxPages - i - 1);
+                            }
+                        } else if (pagesAfterFirstHitRemaining > 0) {
+                            pagesAfterFirstHitRemaining -= 1;
+                            if (pagesAfterFirstHitRemaining === 0) {
+                                currentResults = next;
+                                return;
+                            }
                         }
-                    } else if (pagesAfterFirstHitRemaining > 0) {
-                        pagesAfterFirstHitRemaining -= 1;
-                        if (pagesAfterFirstHitRemaining === 0) {
-                            currentResults = next;
-                            return;
-                        }
+                        if (nextNextBatch === prevNextBatch && newCount <= lastResultCount) return;
+                        currentResults = next;
                     }
-                    if (nextNextBatch === prevNextBatch && newCount <= lastResultCount) return;
-                    currentResults = next;
+                };
+
+                // 先尽可能多地分页，减少用户等待/点击次数。
+                await paginateUpTo(pages);
+
+                if (aborted.current) return lastResultCount > baseCount;
+
+                const nextBatchInfo = parseLocalNextBatch(currentResults.next_batch);
+                const isLocalSearch = Boolean((currentResults as any).seshatQuery);
+                const canBackfill =
+                    isLocalSearch && Boolean(nextBatchInfo?.exhausted) && !backfillExhausted && Boolean(roomId);
+
+                // 本地搜索扫描已到尽头：按需回溯更多历史，再继续分页（对齐 FluffyChat 的“搜索更多”）。
+                if (!canBackfill) return lastResultCount > baseCount;
+                const eventIndex = EventIndexPeg.get();
+                if (!eventIndex) {
+                    setBackfillExhausted(true);
+                    return lastResultCount > baseCount;
                 }
-            };
 
-            // 先尽可能多地分页，减少用户等待/点击次数。
-            await paginateUpTo(pages);
+                setIsBackfilling(true);
+                const { exhausted, error } = await eventIndex.backfillRoom(roomId!, ROOM_SEARCH_BACKFILL_LIMIT);
+                setIsBackfilling(false);
 
-            if (aborted.current) return lastResultCount > baseCount;
+                if (error) {
+                    logger.warn("Room search backfill failed", error);
+                }
 
-            const nextBatchInfo = parseLocalNextBatch(currentResults.next_batch);
-            const isLocalSearch = Boolean((currentResults as any).seshatQuery);
-            const canBackfill =
-                isLocalSearch && Boolean(nextBatchInfo?.exhausted) && !backfillExhausted && Boolean(roomId);
+                if (exhausted) {
+                    setBackfillExhausted(true);
+                    return lastResultCount > baseCount;
+                }
 
-            // 本地搜索扫描已到尽头：按需回溯更多历史，再继续分页（对齐 FluffyChat 的“搜索更多”）。
-            if (!canBackfill) return lastResultCount > baseCount;
-            const eventIndex = EventIndexPeg.get();
-            if (!eventIndex) {
-                setBackfillExhausted(true);
+                // 回溯后再次分页，尽量一次补齐更多结果。
+                const next = await handleSearchResult(searchPagination(client, currentResults), true);
+                if (next) {
+                    currentResults = next;
+                    lastResultCount = currentResults.results?.length ?? lastResultCount;
+                }
+                await paginateUpTo(pages);
                 return lastResultCount > baseCount;
+            } finally {
+                isLoadingMore.current = false;
+                setIsPaginating(false);
             }
-
-            setIsBackfilling(true);
-            const { exhausted, error } = await eventIndex.backfillRoom(roomId!, ROOM_SEARCH_BACKFILL_LIMIT);
-            setIsBackfilling(false);
-
-            if (error) {
-                logger.warn("Room search backfill failed", error);
-            }
-
-            if (exhausted) {
-                setBackfillExhausted(true);
-                return lastResultCount > baseCount;
-            }
-
-            // 回溯后再次分页，尽量一次补齐更多结果。
-            const next = await handleSearchResult(searchPagination(client, currentResults), true);
-            if (next) {
-                currentResults = next;
-                lastResultCount = currentResults.results?.length ?? lastResultCount;
-            }
-            await paginateUpTo(pages);
-            return lastResultCount > baseCount;
-        } finally {
-            isLoadingMore.current = false;
-            setIsPaginating(false);
-        }
-    }, [inProgress, isBackfilling, backfillExhausted, roomId, client, handleSearchResult]);
+        },
+        [inProgress, isBackfilling, backfillExhausted, roomId, client, handleSearchResult],
+    );
 
     const onSearchMore = useCallback(async (): Promise<void> => {
         await loadMoreMessages(MANUAL_SHOW_MORE_PAGES);
@@ -516,7 +522,10 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
     if (results === null) {
         ret.push(
             <li key="search-loading">
-                <div className="mx_RoomView_messagePanel mx_RoomView_messagePanelSearchSpinner" data-testid="messagePanelSearchSpinner">
+                <div
+                    className="mx_RoomView_messagePanel mx_RoomView_messagePanelSearchSpinner"
+                    data-testid="messagePanelSearchSpinner"
+                >
                     <SearchIcon />
                 </div>
             </li>,
@@ -571,7 +580,10 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
             const groupKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
             if (groupKey !== lastGroupKey) {
                 ret.push(
-                    <li key={`group-${resultRoomId}-${groupKey}`} className="mx_RoomSearchView_groupHeader">
+                    <li
+                        key={`group-${resultRoomId}-${groupKey}-${mxEv.getId()}`}
+                        className="mx_RoomSearchView_groupHeader"
+                    >
                         <div className="mx_RoomSearchView_groupHeaderLabel">{formatFullDateNoDayNoTime(date)}</div>
                     </li>,
                 );

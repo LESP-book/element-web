@@ -22,7 +22,8 @@ import { TimelineSeparator } from "@element-hq/web-shared-components";
 
 import { MatrixClientPeg } from "../../MatrixClientPeg";
 import EventIndexPeg from "../../indexing/EventIndexPeg";
-import { _t, getUserLanguage } from "../../languageHandler";
+import { _t } from "../../languageHandler";
+import { getUserLanguage } from "../../i18n/settings";
 import SearchWarning, { WarningKind } from "../views/elements/SearchWarning";
 import BaseCard from "../views/right_panel/BaseCard";
 import Spinner from "../views/elements/Spinner";
@@ -425,7 +426,7 @@ class FilePanel extends React.Component<IProps, IState> {
         const q = term.trim().toLowerCase();
         if (!q) return events;
         return events.filter((event) => {
-            const body = (event.getContent() as any)?.body;
+            const body = event.getContent()?.body;
             return typeof body === "string" && body.toLowerCase().includes(q);
         });
     }

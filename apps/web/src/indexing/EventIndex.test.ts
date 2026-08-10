@@ -49,7 +49,10 @@ describe("EventIndex", () => {
             removeCrawlerCheckpoint: vi.fn(),
             isEventIndexEmpty: vi.fn().mockResolvedValue(false),
         } as any as Mocked<BaseEventIndexManager>;
-        mockPlatformPeg({ getEventIndexingManager: () => mockIndexingManager });
+        mockPlatformPeg({
+            getHumanReadableName: () => "Web Platform",
+            getEventIndexingManager: () => mockIndexingManager,
+        });
 
         const room1 = { roomId: "!room1:id" } as any as Room;
         const room2 = { roomId: "!room2:id" } as any as Room;
@@ -103,7 +106,10 @@ describe("EventIndex", () => {
             removeCrawlerCheckpoint: vi.fn(),
             commitLiveEvents: vi.fn(),
         } as any as Mocked<BaseEventIndexManager>;
-        mockPlatformPeg({ getEventIndexingManager: () => mockIndexingManager });
+        mockPlatformPeg({
+            getHumanReadableName: () => "Electron",
+            getEventIndexingManager: () => mockIndexingManager,
+        });
 
         const room1 = {
             roomId: "!room1:id",

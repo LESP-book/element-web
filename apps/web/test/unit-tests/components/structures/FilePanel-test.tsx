@@ -7,22 +7,14 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React from "react";
-import { EventTimelineSet, PendingEventOrdering, Room, RoomEvent } from "matrix-js-sdk/src/matrix";
-import { screen, render, waitFor } from "jest-matrix-react";
+import { Room } from "matrix-js-sdk/src/matrix";
+import { act, screen, render, waitFor } from "jest-matrix-react";
 import { mocked } from "jest-mock";
 
 import FilePanel from "../../../../src/components/structures/FilePanel";
-import { mkEvent, stubClient } from "../../../test-utils";
+import { clientAndSDKContextRenderOptions, mkEvent, stubClient } from "../../../test-utils";
 import { MatrixClientPeg } from "../../../../src/MatrixClientPeg";
-
-jest.mock("matrix-js-sdk/src/matrix", () => ({
-    ...jest.requireActual("matrix-js-sdk/src/matrix"),
-    TimelineWindow: jest.fn().mockReturnValue({
-        load: jest.fn().mockResolvedValue(null),
-        getEvents: jest.fn().mockReturnValue([]),
-        canPaginate: jest.fn().mockReturnValue(false),
-    }),
-}));
+import { SDKContextClass } from "../../../../src/contexts/SDKContextClass.ts";
 
 describe("FilePanel", () => {
     beforeEach(() => {
@@ -31,33 +23,30 @@ describe("FilePanel", () => {
 
     it("renders empty state", async () => {
         const cli = MatrixClientPeg.safeGet();
-        const room = new Room("!room:server", cli, cli.getSafeUserId(), {
-            pendingEventOrdering: PendingEventOrdering.Detached,
-        });
-        const timelineSet = new EventTimelineSet(room);
-        room.getOrCreateFilteredTimelineSet = jest.fn().mockReturnValue(timelineSet);
+        const room = new Room("!room:server", cli, cli.getSafeUserId());
         mocked(cli.getRoom).mockReturnValue(room);
 
-        const { asFragment } = render(<FilePanel roomId={room.roomId} onClose={jest.fn()} />);
+        const { asFragment } = render(
+            <FilePanel roomId={room.roomId} onClose={jest.fn()} />,
+            clientAndSDKContextRenderOptions(cli, SDKContextClass.instance),
+        );
         await waitFor(() => {
             expect(screen.getByText("No files visible in this room")).toBeInTheDocument();
         });
+        expect(screen.getByPlaceholderText("Search by file name…")).toBeInTheDocument();
+        expect(screen.getByTestId("filter-tab-file-panel-media")).toBeInTheDocument();
+        expect(screen.getByTestId("filter-tab-file-panel-files").querySelector("input")).toBeChecked();
         expect(asFragment()).toMatchSnapshot();
     });
 
     describe("addEncryptedLiveEvent", () => {
-        it("should add file msgtype event to filtered timelineSet", async () => {
+        it("should render a newly added file event with its jump action", async () => {
             const cli = MatrixClientPeg.safeGet();
-            const room = new Room("!room:server", cli, cli.getSafeUserId(), {
-                pendingEventOrdering: PendingEventOrdering.Detached,
-            });
-            cli.reEmitter.reEmit(room, [RoomEvent.Timeline]);
-            const timelineSet = new EventTimelineSet(room);
-            room.getOrCreateFilteredTimelineSet = jest.fn().mockReturnValue(timelineSet);
+            const room = new Room("!room:server", cli, cli.getSafeUserId());
             mocked(cli.getRoom).mockReturnValue(room);
 
             let filePanel: FilePanel | null;
-            render(
+            const { container } = render(
                 <FilePanel
                     roomId={room.roomId}
                     onClose={jest.fn()}
@@ -65,6 +54,7 @@ describe("FilePanel", () => {
                         filePanel = ref;
                     }}
                 />,
+                clientAndSDKContextRenderOptions(cli, SDKContextClass.instance),
             );
             await screen.findByText("No files visible in this room");
 
@@ -79,9 +69,13 @@ describe("FilePanel", () => {
                 },
                 event: true,
             });
-            filePanel!.addEncryptedLiveEvent(event);
+            await act(async () => {
+                filePanel!.addEncryptedLiveEvent(event);
+            });
 
-            expect(timelineSet.getLiveTimeline().getEvents()).toContain(event);
+            expect(await screen.findByText("hello")).toBeInTheDocument();
+            expect(container.querySelector(".mx_SearchResultTile")).toBeInTheDocument();
+            expect(container.querySelector(".mx_SearchResultTile_jump")).toBeInTheDocument();
         });
     });
 });

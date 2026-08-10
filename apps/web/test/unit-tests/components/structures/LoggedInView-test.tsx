@@ -30,7 +30,13 @@ import LoggedInView from "../../../../src/components/structures/LoggedInView";
 import { SDKContext } from "../../../../src/contexts/SDKContext";
 import { StandardActions } from "../../../../src/notifications/StandardActions";
 import ResizeNotifier from "../../../../src/utils/ResizeNotifier";
-import { flushPromises, getMockClientWithEventEmitter, mockClientMethodsUser } from "../../../test-utils";
+import {
+    flushPromises,
+    getMockClientWithEventEmitter,
+    mockClientMethodsRooms,
+    mockClientMethodsServer,
+    mockClientMethodsUser,
+} from "../../../test-utils";
 import { TestSDKContext } from "../../TestSDKContext";
 import defaultDispatcher from "../../../../src/dispatcher/dispatcher";
 import SettingsStore from "../../../../src/settings/SettingsStore";
@@ -40,24 +46,17 @@ import Modal from "../../../../src/Modal";
 import { SETTINGS } from "../../../../src/settings/Settings";
 import ToastStore from "../../../../src/stores/ToastStore";
 import { ModuleApi } from "../../../../src/modules/Api";
+import { fireEvent } from "@testing-library/dom";
 
 describe("<LoggedInView />", () => {
     const userId = "@alice:domain.org";
     const mockClient = getMockClientWithEventEmitter({
         ...mockClientMethodsUser(userId),
-        getClientWellKnown: jest.fn(),
-        waitForClientWellKnown: jest.fn().mockResolvedValue({}),
+        ...mockClientMethodsServer(),
+        ...mockClientMethodsRooms([]),
         _unstable_getRTCTransports: jest.fn().mockResolvedValue([]),
-        matrixRTC: {
-            on: jest.fn(),
-            off: jest.fn(),
-        },
         getAccountData: jest.fn(),
-        getRoom: jest.fn(),
-        getRooms: jest.fn().mockReturnValue([]),
-        getVisibleRooms: jest.fn().mockReturnValue([]),
         getProfileInfo: jest.fn().mockResolvedValue({}),
-        getAuthMetadata: jest.fn().mockResolvedValue(null),
         getSyncState: jest.fn().mockReturnValue(null),
         getSyncStateData: jest.fn().mockReturnValue(null),
         getMediaHandler: jest.fn(),
@@ -67,6 +66,12 @@ describe("<LoggedInView />", () => {
         setExtendedProfileProperty: jest.fn().mockResolvedValue(undefined),
         deleteExtendedProfileProperty: jest.fn().mockResolvedValue(undefined),
         doesServerSupportExtendedProfiles: jest.fn().mockResolvedValue(true),
+        matrixRTC: {
+            on: jest.fn(),
+        },
+        getAuthMetadata: jest.fn().mockRejectedValue(new Error("Legacy auth")),
+        hasLazyLoadMembersEnabled: jest.fn(),
+        isInitialSyncComplete: jest.fn(),
     });
     const mediaHandler = new MediaHandler(mockClient);
     const mockSdkContext = new TestSDKContext();
@@ -78,7 +83,6 @@ describe("<LoggedInView />", () => {
         hideToSRUsers: false,
         config: {
             brand: "Test",
-            element_call: {},
         },
         currentRoomId: "",
         currentUserId: "@bob:server",
@@ -95,7 +99,7 @@ describe("<LoggedInView />", () => {
         mockClient.setPushRuleActions.mockReset().mockResolvedValue({});
         // @ts-expect-error
         mockClient.pushProcessor = new PushProcessor(mockClient);
-        mockSdkContext.client = mockClient;
+        mockSdkContext._client = mockClient;
     });
 
     describe("synced push rules", () => {
@@ -555,5 +559,12 @@ describe("<LoggedInView />", () => {
             // ...while the space panel rail remains visible.
             expect(container.querySelector(".mx_SpacePanel")).toBeInTheDocument();
         });
+    });
+
+    it("should handle KeyBindingAction.ToggleRoomSidePanel", async () => {
+        getComponent({ page_type: "room_view" });
+        jest.spyOn(mockSdkContext.rightPanelStore, "togglePanel");
+        fireEvent.keyDown(document.body, { key: ".", code: "Period", ctrlKey: true, keyCode: 190 });
+        expect(mockSdkContext.rightPanelStore.togglePanel).toHaveBeenCalledWith(null);
     });
 });
