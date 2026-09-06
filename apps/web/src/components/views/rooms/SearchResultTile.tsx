@@ -27,6 +27,7 @@ import { type ViewRoomPayload } from "../../../dispatcher/payloads/ViewRoomPaylo
 import { _t } from "../../../languageHandler";
 import { DateSeparatorViewModel } from "../../../viewmodels/room/timeline/DateSeparatorViewModel";
 import { SDKContext } from "../../../contexts/SDKContext.ts";
+import { EventPresentationContextProvider } from "../../../utils/EventPresentationContextProvider";
 
 interface IProps {
     // a list of strings to be highlighted in the results
@@ -76,7 +77,9 @@ export default class SearchResultTile extends React.Component<IProps> {
         const separatorRoomId = resultEvent.getRoomId()!;
         const ret: React.ReactNode[] = [];
         if (this.props.showDateSeparator !== false) {
-            ret.push(<DateSeparatorWrapper key={`${separatorRoomId}-${ts1}-search`} roomId={separatorRoomId} ts={ts1} />);
+            ret.push(
+                <DateSeparatorWrapper key={`${separatorRoomId}-${ts1}-search`} roomId={separatorRoomId} ts={ts1} />,
+            );
         }
         const layout = SettingsStore.getValue("layout");
         const isTwelveHour = SettingsStore.getValue("showTwelveHourTimestamps");
@@ -111,17 +114,19 @@ export default class SearchResultTile extends React.Component<IProps> {
         };
 
         return (
-            <li data-scroll-tokens={eventId} className="mx_SearchResultTile">
-                <ol>{ret}</ol>
-                <IconButton
-                    className="mx_SearchResultTile_jump"
-                    aria-label={_t("timeline|mab|view_in_room")}
-                    title={_t("timeline|mab|view_in_room")}
-                    onClick={onJumpToEvent}
-                >
-                    <ChevronRightIcon />
-                </IconButton>
-            </li>
+            <EventPresentationContextProvider layout={layout}>
+                <li data-scroll-tokens={eventId} className="mx_SearchResultTile">
+                    <ol>{ret}</ol>
+                    <IconButton
+                        className="mx_SearchResultTile_jump"
+                        aria-label={_t("timeline|mab|view_in_room")}
+                        title={_t("timeline|mab|view_in_room")}
+                        onClick={onJumpToEvent}
+                    >
+                        <ChevronRightIcon />
+                    </IconButton>
+                </li>
+            </EventPresentationContextProvider>
         );
     }
 }

@@ -357,6 +357,11 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
                         logger.error("Discarding stale search results");
                         return null;
                     }
+                    if (error?.name === "AbortError") {
+                        // 打开结果会取消仍在进行的请求，该取消不应显示为搜索错误。
+                        debuglog("search aborted");
+                        return null;
+                    }
                     logger.error("Search failed", error);
                     onUpdate(false, null, error);
                     return null;
@@ -369,16 +374,7 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
     // Mount & unmount effect
     useEffect(() => {
         aborted.current = false;
-        // 理论上 promise 一定存在（由 RoomView.onSearch 构造）。
-        // 但在极端竞态（例如搜索被取消后仍收到异步更新）下，可能出现 search state 被错误“复活”
-        // 且缺少 promise 的情况。这里加一层防御，避免 `.then` 访问 undefined 触发白屏。
-        const maybePromise: unknown = promise;
-        if (maybePromise && typeof (maybePromise as any).then === "function") {
-            handleSearchResult(maybePromise as Promise<ISearchResults>);
-        } else {
-            logger.error("Search initialisation failed: missing search promise");
-            onUpdate(false, null, new Error("Search initialisation failed"));
-        }
+        void handleSearchResult(promise);
         return () => {
             aborted.current = true;
         };
