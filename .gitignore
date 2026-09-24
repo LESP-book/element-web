@@ -42,6 +42,11 @@ CLAUDE.md
 /matrix-js-sdk/
 /packages/shared-components/.vitest-attachments
 
+# Vitest blob reports, merged HTML reports, and attachments (screenshots recorded on failing
+# tests) - written at the repo root by `pnpm test:unit`, or under a package's own directory when
+# running vitest scoped to it directly
+.vitest
+
 # TSC incremental compilation information
 *.tsbuildinfo
 
