@@ -520,6 +520,7 @@ describe("ElementCall", () => {
         });
 
         it("should use element call URL from developer settings if present", async () => {
+            SdkConfig.put({ element_call: { url: "https://self-hosted.example/call" } });
             const originalGetValue = SettingsStore.getValue;
             SettingsStore.getValue = (name: SettingKey, roomId: string | null = null, excludeDefault = false): any => {
                 if (name === "Developer.elementCallUrl") {
@@ -531,8 +532,23 @@ describe("ElementCall", () => {
             };
             await ElementCall.create(room);
             const call = ElementCall.get(room);
-            expect(call?.widget.url.startsWith("https://call.element.dev/")).toBeTruthy();
+            expect(new URL(call!.widget.url).pathname).toBe("/");
+            expect(new URL(call!.widget.url).origin).toBe("https://call.element.dev");
             SettingsStore.getValue = originalGetValue;
+        });
+
+        it("uses the configured self-hosted Element Call room route when no developer override is set", () => {
+            SdkConfig.put({ element_call: { url: "https://self-hosted.example/call" } });
+            ElementCall.create(room);
+            const call = ElementCall.get(room);
+            expect(new URL(call!.widget.url).pathname).toBe("/call/room");
+            expect(new URL(call!.widget.url).origin).toBe("https://self-hosted.example");
+        });
+
+        it("uses the bundled Element Call directory when no external URL is configured", () => {
+            ElementCall.create(room);
+            const call = ElementCall.get(room);
+            expect(new URL(call!.widget.url).pathname).toMatch(/\/widgets\/element-call\/$/);
         });
 
         it("finds ongoing calls that are created by the session manager", async () => {

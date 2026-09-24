@@ -80,6 +80,8 @@ export default class EventIndex extends EventEmitter {
      * The current checkpoint that the crawler is working on.
      */
     private currentCheckpoint: ICrawlerCheckpoint | null = null;
+    // Flag to force adding initial checkpoints (e.g., after database recreation)
+    private forceAddInitialCheckpoints = false;
 
     /**
      * True if we need to add the initial checkpoints for encrypted rooms, once we've completed a sync.
@@ -124,6 +126,14 @@ export default class EventIndex extends EventEmitter {
 
         this.registerActiveRoomChangedListener();
         this.registerListeners();
+    }
+
+    /**
+     * Mark that initial checkpoints should be added on next sync.
+     * This is used when the database is recreated (e.g., schema change).
+     */
+    public setForceAddInitialCheckpoints(force: boolean): void {
+        this.forceAddInitialCheckpoints = force;
     }
 
     /**
@@ -241,8 +251,10 @@ export default class EventIndex extends EventEmitter {
             if (!indexManager) return;
 
             // If the index was empty when we first started up, add the initial checkpoints, to back-populate the index.
-            if (this.needsInitialCheckpoints) {
+            // Also check forceAddInitialCheckpoints flag (used when database is recreated, e.g., schema change)
+            if (this.needsInitialCheckpoints || this.forceAddInitialCheckpoints) {
                 await this.addInitialCheckpoints();
+                this.forceAddInitialCheckpoints = false;
             }
 
             // Web 端不做全量后台爬取：仅在用户“搜索更多”等按需触发时回溯，避免启动时大量索引占用资源。
@@ -1088,7 +1100,7 @@ export default class EventIndex extends EventEmitter {
         };
 
         const encryptedRooms = rooms.filter(isRoomEncrypted);
-        encryptedRooms.forEach((room, index) => {
+        encryptedRooms.forEach((room) => {
             totalRooms.add(room.roomId);
         });
 

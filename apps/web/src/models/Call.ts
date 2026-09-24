@@ -743,7 +743,7 @@ export class ElementCall extends Call {
      *优先级（高 → 低）：
      * 1) `Developer.elementCallUrl`（开发者工具设置）
      * 2) `element_call.url`（Element Web 配置）
-     * 3) 内置的 embedded Element Call 包（`./widgets/element-call/index.html`）
+     * 3) 内置的 embedded Element Call 包（`./widgets/element-call/`）
      *
      * @param client
      * @param roomId
@@ -758,13 +758,12 @@ export class ElementCall extends Call {
             url = new URL(elementCallUrlOverride);
         } else if (elementCallConfigUrl) {
             // For external Element Call deployments, append /room path to trigger RoomPage routing
-            const baseUrl = elementCallConfigUrl.endsWith("/")
-                ? elementCallConfigUrl
-                : elementCallConfigUrl + "/";
+            const baseUrl = elementCallConfigUrl.endsWith("/") ? elementCallConfigUrl : elementCallConfigUrl + "/";
             url = new URL("room", baseUrl);
         } else {
-            // this strips hash fragment from baseUrl
-            url = new URL("./widgets/element-call/index.html#", window.location.href);
+            // Address the bundled copy by directory, not index.html: some static hosts redirect
+            // extensionless paths and would otherwise resolve its relative chunks one level too high.
+            url = new URL("./widgets/element-call/", window.location.href);
         }
         // Splice together the Element Call URL for this call
         // Parameters can be found in https://github.com/element-hq/element-call/blob/livekit/src/UrlParams.ts.

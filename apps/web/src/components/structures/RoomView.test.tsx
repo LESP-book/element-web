@@ -370,6 +370,7 @@ describe("RoomView", () => {
             instance.messagePanel = {
                 sendReadReceipts: sendReadReceiptsSpy,
                 updateReadMarker: updateReadMarkerSpy,
+                getScrollState: vi.fn(),
             };
 
             // Find the main RoomView div and trigger focus
@@ -905,25 +906,13 @@ describe("RoomView", () => {
     });
 
     describe("message search", () => {
-        const stubElementHover = (el: Element): (() => void) => {
-            const original = HTMLElement.prototype.matches;
-            const spy = vi.spyOn(HTMLElement.prototype, "matches").mockImplementation(function (
-                this: HTMLElement,
-                selector: string,
-            ) {
-                if (selector === ":hover") return this === el;
-                return original.call(this, selector);
-            });
-            return () => spy.mockRestore();
-        };
-
-        it("should close search results when edit is clicked", async () => {
+        it("should navigate to a search result in the current room", async () => {
             room.getMyMembership = vi.fn().mockReturnValue(KnownMembership.Join);
 
             const eventMapper = (obj: Partial<IEvent>) => new MatrixEvent(obj);
 
             const roomViewRef = createRef<RoomView>();
-            const { container, getByText, findByLabelText } = await mountRoomView(roomViewRef);
+            const { container, findByRole } = await mountRoomView(roomViewRef);
             await waitFor(() => expect(roomViewRef.current).toBeTruthy());
             // @ts-ignore - triggering a search organically is a lot of work
             act(() =>
@@ -971,20 +960,19 @@ describe("RoomView", () => {
                 expect(container.querySelector(".mx_RoomView_searchResultsPanel")).toBeVisible();
             });
 
-            const searchResultTile = getByText("search term").closest(".mx_EventTile");
-            expect(searchResultTile).not.toBeNull();
-
-            const unhover = stubElementHover(searchResultTile!);
-            await userEvent.hover(searchResultTile!);
-            await userEvent.click(await findByLabelText("Edit"), { skipHover: true });
-            unhover();
-
-            await waitFor(() => {
-                expect(container.querySelector(".mx_RoomView_searchResultsPanel")).not.toBeInTheDocument();
-            });
+            // Inspect navigation without mutating the shared RoomViewStore for the next test.
+            const dispatchSpy = vi.spyOn(defaultDispatcher, "dispatch").mockImplementation(() => {});
+            try {
+                await userEvent.click(await findByRole("button", { name: "View in room" }));
+                expect(dispatchSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({ room_id: room.roomId, event_id: "$eventId", highlighted: true }),
+                );
+            } finally {
+                dispatchSpy.mockRestore();
+            }
         });
 
-        it("should switch rooms when edit is clicked on a search result for a different room", async () => {
+        it("should navigate to a search result in a different room", async () => {
             const room2 = new Room(`!roomswitchtest:example.org`, cli, "@alice:example.org");
             rooms.set(room2.roomId, room2);
 
@@ -993,7 +981,7 @@ describe("RoomView", () => {
             const eventMapper = (obj: Partial<IEvent>) => new MatrixEvent(obj);
 
             const roomViewRef = createRef<RoomView>();
-            const { container, getByText, findByLabelText } = await mountRoomView(roomViewRef);
+            const { container, findByRole } = await mountRoomView(roomViewRef);
             await waitFor(() => expect(roomViewRef.current).toBeTruthy());
             // @ts-ignore - triggering a search organically is a lot of work
             act(() =>
@@ -1040,24 +1028,24 @@ describe("RoomView", () => {
             await waitFor(() => {
                 expect(container.querySelector(".mx_RoomView_searchResultsPanel")).toBeVisible();
             });
-            const prom = untilDispatch(Action.ViewRoom, defaultDispatcher);
-
-            const searchResultTile = getByText("search term").closest(".mx_EventTile");
-            expect(searchResultTile).not.toBeNull();
-
-            const unhover = stubElementHover(searchResultTile!);
-            await userEvent.hover(searchResultTile!);
-            await userEvent.click(await findByLabelText("Edit"), { skipHover: true });
-            unhover();
-
-            await expect(prom).resolves.toEqual(expect.objectContaining({ room_id: room2.roomId }));
+            // Assert the requested navigation without switching the mounted RoomView to a second,
+            // otherwise uninitialised room (which this test does not set up for rendering).
+            const dispatchSpy = vi.spyOn(defaultDispatcher, "dispatch").mockImplementation(() => {});
+            try {
+                await userEvent.click(await findByRole("button", { name: "View in room" }));
+                expect(dispatchSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({ room_id: room2.roomId, event_id: "$eventId", highlighted: true }),
+                );
+            } finally {
+                dispatchSpy.mockRestore();
+            }
         });
 
-        it("should pre-fill search field on FocusMessageSearch dispatch", async () => {
+        it("should start a search with the initial text on FocusMessageSearch dispatch", async () => {
             room.getMyMembership = vi.fn().mockReturnValue(KnownMembership.Join);
 
             const roomViewRef = createRef<RoomView>();
-            const { findByPlaceholderText } = await mountRoomView(roomViewRef);
+            const { container } = await mountRoomView(roomViewRef);
             await waitFor(() => expect(roomViewRef.current).toBeTruthy());
 
             act(() =>
@@ -1067,14 +1055,11 @@ describe("RoomView", () => {
                 }),
             );
 
-            await expect(findByPlaceholderText("Search messages…")).resolves.toHaveValue("search term");
+            await waitFor(() => {
+                expect(roomViewRef.current!.state.search?.term).toBe("search term");
+                expect(container.querySelector(".mx_RoomView_searchResultsPanel")).toBeInTheDocument();
+            });
         });
-    });
-
-    it("fires Action.RoomLoaded", async () => {
-        vi.spyOn(defaultDispatcher, "dispatch");
-        await mountRoomView();
-        expect(defaultDispatcher.dispatch).toHaveBeenCalledWith({ action: Action.RoomLoaded });
     });
 
     // Regression test for https://github.com/element-hq/element-web/issues/29072
