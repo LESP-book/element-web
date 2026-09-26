@@ -6,6 +6,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
+import { fileURLToPath } from "node:url";
 import {
     defineConfig,
     devices,
@@ -17,6 +18,7 @@ import {
 import { type WorkerOptions } from "./playwright/services";
 
 const baseURL = process.env["BASE_URL"] ?? "http://localhost:8080";
+const pageZoomExtension = fileURLToPath(new URL("./playwright/page-zoom-extension", import.meta.url));
 
 const chromeProject: Project<PlaywrightTestOptions, WorkerOptions & PlaywrightWorkerOptions>["use"] = {
     ...devices["Desktop Chrome"],
@@ -33,8 +35,30 @@ const chromeProject: Project<PlaywrightTestOptions, WorkerOptions & PlaywrightWo
         : undefined,
 };
 
+const chromeZoomProject: Project<PlaywrightTestOptions, WorkerOptions & PlaywrightWorkerOptions>["use"] = {
+    ...chromeProject,
+    connectOptions: undefined,
+    launchOptions: {
+        ...chromeProject.launchOptions,
+        // Chromium disables extensions in its normal Playwright headless mode. New headless keeps the extension
+        // active while remaining usable in CI without a display server.
+        headless: false,
+        args: [
+            ...(chromeProject.launchOptions?.args ?? []),
+            "--headless=new",
+            `--disable-extensions-except=${pageZoomExtension}`,
+            `--load-extension=${pageZoomExtension}`,
+        ],
+    },
+};
+
 export default defineConfig<{}, WorkerOptions>({
     projects: [
+        {
+            name: "ChromeZoom",
+            grep: /real Chrome page zoom/,
+            use: chromeZoomProject,
+        },
         {
             name: "Chrome",
             use: {

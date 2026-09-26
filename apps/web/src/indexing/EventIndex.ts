@@ -14,7 +14,7 @@ import {
     RoomEvent,
     type RoomState,
     RoomStateEvent,
-    type MatrixEvent,
+    MatrixEvent,
     Direction,
     EventTimeline,
     type EventTimelineSet,
@@ -32,7 +32,6 @@ import {
     type TimelineWindow,
 } from "matrix-js-sdk/src/matrix";
 import { KnownMembership } from "matrix-js-sdk/src/types";
-import { sleep } from "matrix-js-sdk/src/utils";
 import { logger } from "matrix-js-sdk/src/logger";
 
 import PlatformPeg from "../PlatformPeg";
@@ -42,15 +41,19 @@ import { SettingLevel } from "../settings/SettingLevel";
 import defaultDispatcher from "../dispatcher/dispatcher";
 import { Action } from "../dispatcher/actions";
 import { type ActiveRoomChangedPayload } from "../dispatcher/payloads/ActiveRoomChangedPayload";
+import type BaseEventIndexManager from "./BaseEventIndexManager";
 import {
     type ICrawlerCheckpoint,
     type IEventAndProfile,
+    type IFileQuery,
     type IIndexStats,
     type ILoadArgs,
     type ISearchArgs,
 } from "./BaseEventIndexManager";
 import { asyncFilter } from "../utils/arrays.ts";
 import { logErrorAndShowErrorDialog } from "../utils/ErrorUtils.tsx";
+import { WebEventIndexError } from "./web/WebEventIndexError";
+import { rememberOriginalFileEvent } from "../search/RoomFileSearchOriginals";
 
 // The time in ms that the crawler will wait loop iterations if there
 // have not been any checkpoints to consume in the last iteration.
@@ -63,11 +66,23 @@ interface ICrawler {
     cancel(): void;
 }
 
+/** Outcome of one shared room history request; scanned is not a completeness claim. */
+export interface IBackfillResult {
+    exhausted: boolean;
+    scanned: number;
+    indexed: number;
+    /** Whether the shared room-history owner has another safe continuation after this step. */
+    canContinue: boolean;
+    reason?: "end" | "forbidden" | "missing_token" | "stalled";
+    error?: unknown;
+}
+
 /**
  * Event indexing class that wraps the platform specific event indexing.
  */
 export default class EventIndex extends EventEmitter {
     private crawler: ICrawler | null = null;
+    private crawlerPromise: Promise<void> | null = null;
     private activeRoomId: string | null = null;
     private activeRoomChangedDispatchToken: string | undefined;
 
@@ -80,6 +95,14 @@ export default class EventIndex extends EventEmitter {
      * The current checkpoint that the crawler is working on.
      */
     private currentCheckpoint: ICrawlerCheckpoint | null = null;
+    private readonly roomTasks = new Map<string, Promise<IBackfillResult>>();
+    private readonly pendingCheckpointUpdates = new Map<string, Promise<void>>();
+    private readonly completedRoomTokens = new Map<string, string | null>();
+    // Only the backward chain currently owned by a per-room step.
+    private readonly inFlightRoomTokens = new Map<string, string>();
+    private closed = false;
+    private indexClient: MatrixClient | null = null;
+    private indexManager: BaseEventIndexManager | null = null;
     // Flag to force adding initial checkpoints (e.g., after database recreation)
     private forceAddInitialCheckpoints = false;
 
@@ -98,7 +121,11 @@ export default class EventIndex extends EventEmitter {
     }
 
     private isWebPlatform(): boolean {
-        return PlatformPeg.get()?.getHumanReadableName() === "Web Platform";
+        return Boolean(this.indexManager?.supportsLocalUnencryptedRoomSearch());
+    }
+
+    private activeManager(): BaseEventIndexManager | null {
+        return !this.closed && MatrixClientPeg.get() === this.indexClient ? this.indexManager : null;
     }
 
     /**
@@ -113,6 +140,8 @@ export default class EventIndex extends EventEmitter {
     public async init(): Promise<void> {
         const indexManager = PlatformPeg.get()?.getEventIndexingManager();
         if (!indexManager) return;
+        this.indexClient = MatrixClientPeg.safeGet();
+        this.indexManager = indexManager;
 
         // If the index is empty, set a flag so that we add the initial checkpoints once we sync.
         // We do this check here rather than in `onSync` because, by the time `onSync` is called, there will
@@ -169,7 +198,7 @@ export default class EventIndex extends EventEmitter {
      * Remove the event index specific event listeners.
      */
     public removeListeners(): void {
-        const client = MatrixClientPeg.get();
+        const client = this.indexClient;
         if (client === null) return;
 
         client.removeListener(ClientEvent.Sync, this.onSync);
@@ -184,56 +213,53 @@ export default class EventIndex extends EventEmitter {
     public async addInitialCheckpoints(): Promise<void> {
         this.needsInitialCheckpoints = false;
 
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
+        const indexManager = this.activeManager();
         if (!indexManager) return;
         const client = MatrixClientPeg.safeGet();
         const rooms = client.getRooms();
+        // Pin the first-sync boundary before checking room encryption asynchronously.
+        const snapshots = new Map(rooms.map((room) => [room.roomId, this.captureRoomTimeline(room.roomId)]));
+        const inFlightAtSync = new Map(this.inFlightRoomTokens);
+        const stepsAtSync = new Map(this.roomTasks);
+        const pendingAtSync = new Set(this.pendingCheckpointUpdates.keys());
 
         // We only care to crawl the encrypted rooms, non-encrypted
         // rooms can use the search provided by the homeserver.
         const encryptedRooms = await asyncFilter(rooms, async (room) =>
             Boolean(await client.getCrypto()?.isEncryptionEnabledInRoom(room.roomId)),
         );
+        if (
+            this.closed ||
+            client !== this.indexClient ||
+            MatrixClientPeg.get() !== client ||
+            this.activeManager() !== indexManager
+        ) {
+            return;
+        }
 
         this.logger.debug("addInitialCheckpoints: starting");
 
-        // Gather the prev_batch tokens and create checkpoints for
-        // our message crawler.
+        // Capture each room's current gap and enqueue both directions behind any room step.
         await Promise.all(
             encryptedRooms.map(async (room): Promise<void> => {
-                const timeline = room.getLiveTimeline();
-                const token = timeline.getPaginationToken(Direction.Backward);
-
-                if (!token) {
-                    this.logger.debug(`addInitialCheckpoints: No back-pagination token for room ${room.roomId}"`);
+                if (
+                    this.closed ||
+                    client !== this.indexClient ||
+                    MatrixClientPeg.get() !== client ||
+                    this.activeManager() !== indexManager
+                ) {
                     return;
                 }
-                this.logger.debug(`addInitialCheckpoints: Adding initial checkpoints for room ${room.roomId}`);
-
-                const backCheckpoint: ICrawlerCheckpoint = {
-                    roomId: room.roomId,
-                    token: token,
-                    direction: Direction.Backward,
-                    fullCrawl: this.shouldFullCrawl(),
-                };
-
-                const forwardCheckpoint: ICrawlerCheckpoint = {
-                    roomId: room.roomId,
-                    token: token,
-                    direction: Direction.Forward,
-                };
-
+                const snapshot = snapshots.get(room.roomId);
+                if (!snapshot?.token) return;
+                const coveredStep =
+                    !pendingAtSync.has(room.roomId) && inFlightAtSync.get(room.roomId) === snapshot.token
+                        ? stepsAtSync.get(room.roomId)
+                        : undefined;
                 try {
-                    await indexManager.addCrawlerCheckpoint(backCheckpoint);
-                    this.crawlerCheckpoints.push(backCheckpoint);
-
-                    await indexManager.addCrawlerCheckpoint(forwardCheckpoint);
-                    this.crawlerCheckpoints.push(forwardCheckpoint);
-                } catch (e) {
-                    this.logger.warn(
-                        `addInitialCheckpoints: Error adding initial checkpoints for room ${room.roomId}`,
-                        e,
-                    );
+                    await this.enqueueRoomCheckpoint(room.roomId, this.shouldFullCrawl(), snapshot, true, coveredStep);
+                } catch (error) {
+                    this.logger.warn("Error adding initial room checkpoints", room.roomId, error);
                 }
             }),
         );
@@ -247,7 +273,7 @@ export default class EventIndex extends EventEmitter {
         if (state != SyncState.Syncing) return;
 
         const onSyncInner = async (): Promise<void> => {
-            const indexManager = PlatformPeg.get()?.getEventIndexingManager();
+            const indexManager = this.activeManager();
             if (!indexManager) return;
 
             // If the index was empty when we first started up, add the initial checkpoints, to back-populate the index.
@@ -263,8 +289,8 @@ export default class EventIndex extends EventEmitter {
                 this.startCrawler();
             }
 
-            // Commit any queued up live events
-            await indexManager.commitLiveEvents();
+            // Commit queued events only while this instance still owns the account.
+            if (this.activeManager()) await indexManager.commitLiveEvents();
         };
 
         onSyncInner().catch((e) => {
@@ -273,8 +299,7 @@ export default class EventIndex extends EventEmitter {
     };
 
     private shouldFullCrawl(): boolean {
-        const platform = PlatformPeg.get();
-        return platform?.getHumanReadableName() !== "Web Platform";
+        return !this.isWebPlatform();
     }
 
     /*
@@ -292,18 +317,17 @@ export default class EventIndex extends EventEmitter {
         removed: boolean,
         data: IRoomTimelineData,
     ): Promise<void> => {
-        if (!room) return; // notification timeline, we'll get this event again with a room specific timeline
+        if (!room || !this.activeManager()) return; // notification timeline or obsolete client
 
         const client = MatrixClientPeg.safeGet();
 
         const roomId = ev.getRoomId()!;
-        if (!this.shouldIndexRoom(roomId)) return;
+        // Redactions and replacements may refer to cached events from rooms no longer active.
+        if (ev.isRedaction()) return this.redactEvent(ev);
+        if (this.isWebPlatform() && (await this.applyEditIfNeeded(ev))) return;
+        if (!this.shouldIndexRoom(roomId) || this.closed) return;
         // Web 端：所有房间都走本地索引；其它平台保持原逻辑（仅加密房间本地索引）。
         if (!this.isWebPlatform() && !client.isRoomEncrypted(roomId)) return;
-
-        if (ev.isRedaction()) {
-            return this.redactEvent(ev);
-        }
 
         // If it isn't a live event or if it's redacted there's nothing to do.
         if (toStartOfTimeline || !data || !data.liveEvent || ev.isRedacted()) {
@@ -316,12 +340,12 @@ export default class EventIndex extends EventEmitter {
     };
 
     private onRoomStateEvent = async (ev: MatrixEvent, state: RoomState): Promise<void> => {
-        if (this.isWebPlatform()) return;
+        if (!this.activeManager() || this.isWebPlatform()) return;
         if (!MatrixClientPeg.safeGet().isRoomEncrypted(state.roomId)) return;
 
         if (ev.getType() === EventType.RoomEncryption && !(await this.isRoomIndexed(state.roomId))) {
             this.logger.debug("Adding a checkpoint for a newly encrypted room", state.roomId);
-            await this.addRoomCheckpoint(state.roomId, true);
+            await this.enqueueRoomCheckpoint(state.roomId, true, this.captureRoomTimeline(state.roomId));
         }
     };
 
@@ -330,7 +354,7 @@ export default class EventIndex extends EventEmitter {
      * We cannot rely on Room.redaction as this only fires if the redaction applied to an event the js-sdk has loaded.
      */
     private redactEvent = async (ev: MatrixEvent): Promise<void> => {
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
+        const indexManager = this.activeManager();
         if (!indexManager) return;
 
         const associatedId = ev.getAssociatedId();
@@ -350,13 +374,13 @@ export default class EventIndex extends EventEmitter {
      * re-add checkpoints for rooms that need to be crawled again.
      */
     private onTimelineReset = async (room: Room | undefined): Promise<void> => {
-        if (!room) return;
+        if (!room || !this.activeManager()) return;
         if (this.isWebPlatform()) return;
         if (!MatrixClientPeg.safeGet().isRoomEncrypted(room.roomId)) return;
 
         this.logger.debug("Adding a checkpoint because of a limited timeline", room.roomId);
 
-        await this.addRoomCheckpoint(room.roomId, false);
+        await this.enqueueRoomCheckpoint(room.roomId, false, this.captureRoomTimeline(room.roomId));
     };
 
     /**
@@ -396,6 +420,7 @@ export default class EventIndex extends EventEmitter {
     }
 
     private eventToJson(ev: MatrixEvent): IEventWithRoomId {
+        // getEffectiveEvent merges the SDK clear event so the index can retain a searchable unedited source.
         const e = ev.getEffectiveEvent() as any;
 
         if (ev.isEncrypted()) {
@@ -427,9 +452,9 @@ export default class EventIndex extends EventEmitter {
      * @param {MatrixEvent} ev The event that should be added to the index.
      */
     private async addLiveEventToIndex(ev: MatrixEvent): Promise<void> {
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
-
-        if (!indexManager || !this.isValidEvent(ev)) return;
+        const indexManager = this.activeManager();
+        if (this.isWebPlatform() && (await this.applyEditIfNeeded(ev))) return;
+        if (!indexManager || !this.activeManager() || !this.isValidEvent(ev)) return;
 
         const e = this.eventToJson(ev);
 
@@ -449,54 +474,146 @@ export default class EventIndex extends EventEmitter {
         this.emit("changedCheckpoint", this.currentRoom());
     }
 
-    private async addEventsFromLiveTimeline(timeline: EventTimeline): Promise<void> {
-        const events = timeline.getEvents();
+    private async applyEditIfNeeded(ev: MatrixEvent): Promise<boolean> {
+        if (ev.getType() !== EventType.RoomMessage || ev.isDecryptionFailure()) return false;
+        const content = ev.getContent();
+        const relation = content["m.relates_to"];
+        if (relation?.rel_type !== "m.replace") return false;
+        await this.activeManager()?.applyEventEdit(ev.getEffectiveEvent() as IEventWithRoomId);
+        return true;
+    }
 
-        for (let i = 0; i < events.length; i++) {
-            const ev = events[i];
-            await this.addLiveEventToIndex(ev);
+    private async addEventsFromLiveTimeline(events: MatrixEvent[]): Promise<void> {
+        const client = MatrixClientPeg.safeGet();
+        for (const ev of events) {
+            if (this.closed || MatrixClientPeg.get() !== this.indexClient) throw new Error("Index account changed");
+            if (ev.isRedaction()) {
+                await this.redactEvent(ev);
+            } else {
+                await client.decryptEventIfNeeded(ev);
+                if (this.closed || MatrixClientPeg.get() !== this.indexClient) throw new Error("Index account changed");
+                await this.addLiveEventToIndex(ev);
+            }
         }
     }
 
-    private async addRoomCheckpoint(roomId: string, fullCrawl = false): Promise<void> {
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
-        if (!indexManager) return;
-        const client = MatrixClientPeg.safeGet();
-        const room = client.getRoom(roomId);
+    /** Import the visible timeline before the first local room query; history begins at its backward token. */
+    public async ensureRoomTimelineIndexed(roomId: string): Promise<void> {
+        if (this.closed || MatrixClientPeg.get() !== this.indexClient) throw new Error("Index account changed");
+        const snapshot = this.captureRoomTimeline(roomId);
+        if (snapshot) await this.addEventsFromLiveTimeline(snapshot.events);
+    }
 
-        if (!room) return;
+    private captureRoomTimeline(roomId: string): { token: string | null; events: MatrixEvent[] } | null {
+        const timeline = MatrixClientPeg.safeGet().getRoom(roomId)?.getLiveTimeline();
+        return timeline
+            ? { token: timeline.getPaginationToken(Direction.Backward), events: [...timeline.getEvents()] }
+            : null;
+    }
 
-        const timeline = room.getLiveTimeline();
-        const token = timeline.getPaginationToken(Direction.Backward);
-
-        if (!token) {
-            // The room doesn't contain any tokens, meaning the live timeline
-            // contains all the events, add those to the index.
-            await this.addEventsFromLiveTimeline(timeline);
-            return;
+    // A limited timeline can introduce a second gap while a crawl is in flight. Capture its
+    // token now: a later reset must not replace the first gap while it waits in this queue.
+    private async enqueueRoomCheckpoint(
+        roomId: string,
+        fullCrawl: boolean,
+        snapshot: { token: string | null; events: MatrixEvent[] } | null,
+        includeForward = false,
+        coveredAtCapture?: Promise<IBackfillResult>,
+    ): Promise<void> {
+        const client = this.indexClient;
+        const indexManager = this.indexManager;
+        const previous = this.pendingCheckpointUpdates.get(roomId);
+        const isStillActive = (): boolean =>
+            Boolean(client) &&
+            !this.closed &&
+            this.indexClient === client &&
+            MatrixClientPeg.get() === client &&
+            this.activeManager() === indexManager;
+        const update = (previous ?? Promise.resolve())
+            .catch(() => {})
+            .then(async () => {
+                while (this.roomTasks.has(roomId)) await this.roomTasks.get(roomId);
+                if (!isStillActive()) return;
+                const coveredResult = await coveredAtCapture;
+                if (!isStillActive()) return;
+                // The initial-sync update itself keeps pendingCheckpointUpdates set while the
+                // foreground step ends. Ignore only that update, never another queued gap.
+                const skipInitialBackward =
+                    includeForward &&
+                    !previous &&
+                    coveredResult?.reason === "end" &&
+                    !coveredResult.error &&
+                    this.pendingCheckpointUpdates.get(roomId) === update &&
+                    !this.crawlerCheckpoints.some(
+                        (item) => item.roomId === roomId && item.direction === Direction.Backward,
+                    );
+                await this.runRoomTask(roomId, async () => {
+                    if (!isStillActive()) return { exhausted: false, scanned: 0, indexed: 0, canContinue: false };
+                    if (
+                        !skipInitialBackward &&
+                        (!includeForward ||
+                            !snapshot?.token ||
+                            (await this.getCompletedRoomToken(roomId)) !== snapshot.token)
+                    ) {
+                        await this.addRoomCheckpoint(roomId, fullCrawl, snapshot);
+                    }
+                    if (includeForward) await this.addRoomCheckpoint(roomId, false, snapshot, Direction.Forward);
+                    const hasBackwardGap = this.crawlerCheckpoints.some(
+                        (checkpoint) => checkpoint.roomId === roomId && checkpoint.direction === Direction.Backward,
+                    );
+                    return { exhausted: false, scanned: 0, indexed: 0, canContinue: hasBackwardGap };
+                });
+            });
+        this.pendingCheckpointUpdates.set(roomId, update);
+        try {
+            await update;
+        } finally {
+            if (this.pendingCheckpointUpdates.get(roomId) === update) this.pendingCheckpointUpdates.delete(roomId);
         }
+    }
+
+    private async addRoomCheckpoint(
+        roomId: string,
+        fullCrawl = false,
+        snapshot = this.captureRoomTimeline(roomId),
+        direction = Direction.Backward,
+    ): Promise<void> {
+        const indexManager = this.activeManager();
+        if (!indexManager || !snapshot) return;
+        const { token, events } = snapshot;
+        // The backward token starts before the captured timeline; forward preserves
+        // desktop crawler semantics without importing the same events twice.
+        if (direction === Direction.Backward) await this.addEventsFromLiveTimeline(events);
+        if (!token || this.activeManager() !== indexManager) return;
 
         const checkpoint = {
-            roomId: room.roomId,
+            roomId,
             token: token,
-            fullCrawl: fullCrawl && this.shouldFullCrawl(),
-            direction: Direction.Backward,
+            ...(direction === Direction.Backward
+                ? {
+                      fullCrawl: fullCrawl && this.shouldFullCrawl(),
+                      ...(this.isWebPlatform() ? { rootToken: token } : {}),
+                  }
+                : {}),
+            direction,
         };
 
+        if (
+            this.crawlerCheckpoints.some(
+                (item) => item.roomId === roomId && item.token === token && item.direction === direction,
+            )
+        )
+            return;
         this.logger.debug("Adding checkpoint", JSON.stringify(checkpoint));
 
-        try {
-            await indexManager.addCrawlerCheckpoint(checkpoint);
-        } catch (e) {
-            this.logger.warn(`Error adding new checkpoint for room ${room.roomId}`, e);
-        }
-
+        await indexManager.addCrawlerCheckpoint(checkpoint);
+        if (this.activeManager() !== indexManager) return;
         this.crawlerCheckpoints.push(checkpoint);
     }
 
-    private takeRoomCheckpoint(roomId: string): ICrawlerCheckpoint | null {
+    private takeRoomCheckpoint(roomId: string, direction: Direction): ICrawlerCheckpoint | null {
         const index = this.crawlerCheckpoints.findIndex(
-            (checkpoint) => checkpoint.roomId === roomId && checkpoint.direction === Direction.Backward,
+            (checkpoint) => checkpoint.roomId === roomId && checkpoint.direction === direction,
         );
         if (index === -1) return null;
         return this.crawlerCheckpoints.splice(index, 1)[0] ?? null;
@@ -505,42 +622,65 @@ export default class EventIndex extends EventEmitter {
     private async crawlCheckpoint(
         checkpoint: ICrawlerCheckpoint,
         limit: number,
-    ): Promise<{ nextCheckpoint: ICrawlerCheckpoint | null; eventsAlreadyAdded: boolean }> {
+    ): Promise<{
+        nextCheckpoint: ICrawlerCheckpoint | null;
+        scanned: number;
+        indexed: number;
+        reason?: IBackfillResult["reason"];
+        error?: unknown;
+    }> {
         const client = MatrixClientPeg.safeGet();
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
+        const indexManager = this.activeManager();
         if (!indexManager) {
             throw new Error("Event indexing is not supported on this platform");
         }
 
+        const rootToken =
+            checkpoint.rootToken ??
+            (this.captureRoomTimeline(checkpoint.roomId)?.token === checkpoint.token ? checkpoint.token : undefined);
         const eventMapper = client.getEventMapper({ preventReEmit: true });
         let res: Awaited<ReturnType<MatrixClient["createMessagesRequest"]>>;
 
         try {
             res = await client.createMessagesRequest(checkpoint.roomId, checkpoint.token, limit, checkpoint.direction);
-        } catch (e) {
-            if (e instanceof HTTPError && e.httpStatus === 403) {
-                this.logger.debug(
-                    "Removing checkpoint as we don't have permissions to fetch messages from this room.",
-                    JSON.stringify(checkpoint),
-                );
-                try {
-                    await indexManager.removeCrawlerCheckpoint(checkpoint);
-                } catch (removeError) {
-                    this.logger.warn(`Error removing checkpoint ${JSON.stringify(checkpoint)}:`, removeError);
-                }
-                return { nextCheckpoint: null, eventsAlreadyAdded: true };
+        } catch (error) {
+            if (error instanceof HTTPError && error.httpStatus === 403 && this.activeManager() === indexManager) {
+                this.logger.debug("Removing checkpoint because history is not accessible.");
+                await indexManager.removeCrawlerCheckpoint(checkpoint);
+                return { nextCheckpoint: null, scanned: 0, indexed: 0, reason: "forbidden" };
             }
-            throw e;
+            if (error instanceof HTTPError && error.httpStatus === 400) {
+                throw new WebEventIndexError({
+                    code: "cursor_unavailable",
+                    operation: "backfill",
+                    retryability: "reinitialize",
+                });
+            }
+            if (
+                error instanceof HTTPError &&
+                typeof error.httpStatus === "number" &&
+                error.httpStatus >= 400 &&
+                error.httpStatus < 500
+            ) {
+                throw new WebEventIndexError({
+                    code: "permission_denied",
+                    operation: "backfill",
+                    retryability: "user_action",
+                });
+            }
+            throw new WebEventIndexError({
+                code: "network_failure",
+                operation: "backfill",
+                retryability: "retry",
+            });
         }
 
+        if (!this.activeManager() || client !== this.indexClient)
+            throw new Error("Index account changed during backfill");
         if (res.chunk.length === 0) {
             this.logger.debug("Done with the checkpoint", JSON.stringify(checkpoint));
-            try {
-                await indexManager.removeCrawlerCheckpoint(checkpoint);
-            } catch (e) {
-                this.logger.warn("Error removing checkpoint", JSON.stringify(checkpoint), e);
-            }
-            return { nextCheckpoint: null, eventsAlreadyAdded: true };
+            await indexManager.removeCrawlerCheckpoint(checkpoint);
+            return { nextCheckpoint: null, scanned: 0, indexed: 0, reason: "end" };
         }
 
         const matrixEvents = res.chunk.map(eventMapper);
@@ -565,8 +705,17 @@ export default class EventIndex extends EventEmitter {
             .map((event) => client.decryptEventIfNeeded(event, { emit: false }));
 
         await Promise.all(decryptionPromises);
+        if (!this.activeManager() || client !== this.indexClient)
+            throw new Error("Index account changed during backfill");
 
-        const filteredEvents = matrixEvents.filter(this.isValidEvent);
+        if (this.isWebPlatform()) {
+            for (const event of matrixEvents) await this.applyEditIfNeeded(event);
+        }
+        const filteredEvents = matrixEvents.filter(
+            (ev) =>
+                this.isValidEvent(ev) &&
+                (!this.isWebPlatform() || ev.getContent()["m.relates_to"]?.rel_type !== "m.replace"),
+        );
         const redactionEvents = matrixEvents.filter((ev) => ev.isRedaction());
 
         const events = filteredEvents.map((ev) => {
@@ -583,6 +732,7 @@ export default class EventIndex extends EventEmitter {
                 roomId: checkpoint.roomId,
                 token: res.end,
                 fullCrawl: checkpoint.fullCrawl,
+                rootToken,
                 direction: checkpoint.direction,
             };
         }
@@ -607,17 +757,29 @@ export default class EventIndex extends EventEmitter {
                 "The server didn't return a valid new checkpoint, not continuing the crawl.",
                 JSON.stringify(checkpoint),
             );
-            return { nextCheckpoint: null, eventsAlreadyAdded };
+            return {
+                nextCheckpoint: null,
+                scanned: res.chunk.length,
+                indexed: eventsAlreadyAdded ? 0 : events.length,
+                reason: "missing_token",
+                error: new WebEventIndexError({
+                    code: "cursor_unavailable",
+                    operation: "backfill",
+                    retryability: "reinitialize",
+                }),
+            };
         }
 
-        // 避免卡在同一个 token 上无限回溯：只有在 token 未推进时才停止。
-        if (eventsAlreadyAdded === true && newCheckpoint.token === checkpoint.token) {
-            this.logger.debug(
-                "Checkpoint did not advance, stopping the crawl",
-                JSON.stringify(checkpoint),
-            );
+        // Keep newly indexed events, but do not request the same server cursor again.
+        if (newCheckpoint.token === checkpoint.token) {
+            this.logger.debug("Checkpoint did not advance, stopping the crawl", JSON.stringify(checkpoint));
             await indexManager.removeCrawlerCheckpoint(newCheckpoint);
-            return { nextCheckpoint: null, eventsAlreadyAdded };
+            return {
+                nextCheckpoint: null,
+                scanned: res.chunk.length,
+                indexed: eventsAlreadyAdded ? 0 : events.length,
+                reason: "stalled",
+            };
         }
 
         if (eventsAlreadyAdded === true) {
@@ -627,7 +789,11 @@ export default class EventIndex extends EventEmitter {
             );
         }
 
-        return { nextCheckpoint: newCheckpoint, eventsAlreadyAdded };
+        return {
+            nextCheckpoint: newCheckpoint,
+            scanned: res.chunk.length,
+            indexed: eventsAlreadyAdded ? 0 : events.length,
+        };
     }
 
     /**
@@ -642,20 +808,22 @@ export default class EventIndex extends EventEmitter {
      */
     private async crawlerFunc(): Promise<void> {
         let cancelled = false;
+        let wake: (() => void) | null = null;
 
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
+        const indexManager = this.activeManager();
         if (!indexManager) return;
 
         this.crawler = {
             cancel: () => {
                 cancelled = true;
+                wake?.();
             },
         };
 
         let idle = false;
 
         // oxlint-disable-next-line no-unmodified-loop-condition
-        while (!cancelled) {
+        while (!cancelled && !this.closed) {
             let sleepTime = SettingsStore.getValueAt(SettingLevel.DEVICE, "crawlerSleepTime");
 
             // Don't let the user configure a lower sleep time than 100 ms.
@@ -670,13 +838,22 @@ export default class EventIndex extends EventEmitter {
                 this.emitNewCheckpoint();
             }
 
-            await sleep(sleepTime);
+            await new Promise<void>((resolve) => {
+                const timer = setTimeout(() => {
+                    wake = null;
+                    resolve();
+                }, sleepTime);
+                wake = () => {
+                    clearTimeout(timer);
+                    wake = null;
+                    resolve();
+                };
+            });
 
-            if (cancelled) {
-                break;
-            }
+            if (cancelled || this.closed) break;
 
-            const checkpoint = this.crawlerCheckpoints.shift();
+            // The shared room step owns dequeue and requeue, including checkpoint persistence.
+            const checkpoint = this.crawlerCheckpoints.find((item) => !this.roomTasks.has(item.roomId));
 
             /// There is no checkpoint available currently, one may appear if
             // a sync with limited room timelines happens, so go back to sleep.
@@ -692,13 +869,11 @@ export default class EventIndex extends EventEmitter {
             idle = false;
 
             try {
-                const { nextCheckpoint } = await this.crawlCheckpoint(checkpoint, EVENTS_PER_CRAWL);
-                if (nextCheckpoint) {
-                    this.crawlerCheckpoints.push(nextCheckpoint);
-                }
+                await this.runRoomTask(checkpoint.roomId, () =>
+                    this.processRoomStep(checkpoint.roomId, EVENTS_PER_CRAWL, checkpoint.direction, false),
+                );
             } catch (e) {
                 this.logger.warn("Error during a crawl", e);
-                this.crawlerCheckpoints.push(checkpoint);
             }
         }
     }
@@ -707,14 +882,15 @@ export default class EventIndex extends EventEmitter {
      * Start the crawler background task.
      */
     public startCrawler(): void {
-        if (this.crawler !== null) return;
+        if (this.closed || this.crawlerPromise) return;
         this.logger.debug("Starting crawler");
-        this.crawlerFunc()
-            .finally(() => {
-                this.crawler = null;
-            })
+        this.crawlerPromise = this.crawlerFunc()
             .catch((e) => {
                 this.logger.error("Error in crawler function", e);
+            })
+            .finally(() => {
+                this.crawler = null;
+                this.crawlerPromise = null;
             });
     }
 
@@ -734,10 +910,13 @@ export default class EventIndex extends EventEmitter {
      * task, and closes the index.
      */
     public async close(): Promise<void> {
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
+        const indexManager = this.indexManager;
+        this.closed = true;
         this.removeListeners();
         this.removeActiveRoomChangedListener();
         this.stopCrawler();
+        await this.crawlerPromise;
+        await Promise.allSettled([...this.pendingCheckpointUpdates.values(), ...this.roomTasks.values()]);
         await indexManager?.closeEventIndex();
     }
 
@@ -751,11 +930,14 @@ export default class EventIndex extends EventEmitter {
      * of search results once the search is done.
      */
     public async search(searchArgs: ISearchArgs): Promise<IResultRoomEvents | undefined> {
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
-        return indexManager?.searchEventIndex(searchArgs);
+        if (this.closed || MatrixClientPeg.get() !== this.indexClient) throw new Error("Event index account changed");
+        const result = await this.indexManager?.searchEventIndex(searchArgs);
+        if (this.closed || MatrixClientPeg.get() !== this.indexClient) throw new Error("Event index account changed");
+        return result;
     }
 
     public hasBackfillForRoom(roomId: string): boolean {
+        if (this.roomTasks.has(roomId)) return true;
         if (this.currentCheckpoint?.roomId === roomId && this.currentCheckpoint.direction === Direction.Backward) {
             return true;
         }
@@ -764,38 +946,186 @@ export default class EventIndex extends EventEmitter {
         );
     }
 
-    public async backfillRoom(
+    private runRoomTask(roomId: string, task: () => Promise<IBackfillResult>): Promise<IBackfillResult> {
+        const running = this.roomTasks.get(roomId);
+        if (running) return running;
+        const promise = task().finally(() => {
+            this.roomTasks.delete(roomId);
+            this.inFlightRoomTokens.delete(roomId);
+        });
+        this.roomTasks.set(roomId, promise);
+        return promise;
+    }
+
+    /** Fetch one shared room-history page. Concurrent callers join the same per-room step. */
+    public backfillRoom(roomId: string, limit = EVENTS_PER_CRAWL): Promise<IBackfillResult> {
+        if (this.closed || MatrixClientPeg.get() !== this.indexClient) {
+            return Promise.resolve({
+                exhausted: false,
+                scanned: 0,
+                indexed: 0,
+                canContinue: false,
+                error: new Error("Index account changed"),
+            });
+        }
+        const running = this.roomTasks.get(roomId);
+        if (
+            running &&
+            this.currentCheckpoint?.roomId === roomId &&
+            this.currentCheckpoint.direction !== Direction.Backward
+        ) {
+            return running.then(() => this.backfillRoom(roomId, limit));
+        }
+        if (running) return running;
+        const pending = this.pendingCheckpointUpdates.get(roomId);
+        if (pending) return pending.then(() => this.backfillRoom(roomId, limit));
+        return this.runRoomTask(roomId, () => this.processRoomStep(roomId, limit, Direction.Backward, true));
+    }
+
+    private async getCompletedRoomToken(roomId: string): Promise<string | null> {
+        if (this.completedRoomTokens.has(roomId)) return this.completedRoomTokens.get(roomId) ?? null;
+        const token = (await this.activeManager()?.getCompletedRoomToken?.(roomId)) ?? null;
+        if (!this.activeManager()) throw new Error("Index account changed");
+        this.completedRoomTokens.set(roomId, token);
+        return token;
+    }
+
+    // Own checkpoint retrieval, commit, and requeue in the same per-room task.
+    private async processRoomStep(
         roomId: string,
-        limit = EVENTS_PER_CRAWL,
-    ): Promise<{ exhausted: boolean; error?: unknown }> {
+        limit: number,
+        direction: Direction,
+        create: boolean,
+    ): Promise<IBackfillResult> {
         const client = MatrixClientPeg.safeGet();
-        if (!this.isWebPlatform() && !client.isRoomEncrypted(roomId)) {
-            return { exhausted: true };
+        if (this.closed || client !== this.indexClient) throw new Error("Index account changed");
+        if (create && !this.isWebPlatform() && !client.isRoomEncrypted(roomId)) {
+            return { exhausted: true, scanned: 0, indexed: 0, canContinue: false, reason: "end" };
         }
-
-        if (this.currentCheckpoint?.roomId === roomId) {
-            return { exhausted: false };
+        let checkpoint = this.takeRoomCheckpoint(roomId, direction);
+        if (checkpoint && direction === Direction.Backward) {
+            const liveToken = this.captureRoomTimeline(roomId)?.token;
+            const rootToken = checkpoint.rootToken ?? (checkpoint.token === liveToken ? liveToken : undefined);
+            if (rootToken) this.inFlightRoomTokens.set(roomId, rootToken);
         }
-
-        let checkpoint = this.takeRoomCheckpoint(roomId);
-        if (!checkpoint) {
-            await this.addRoomCheckpoint(roomId, false);
-            checkpoint = this.takeRoomCheckpoint(roomId);
+        if (!checkpoint && this.pendingCheckpointUpdates.has(roomId)) {
+            return { exhausted: false, scanned: 0, indexed: 0, canContinue: true };
         }
-
-        if (!checkpoint) return { exhausted: true };
-
-        try {
-            const { nextCheckpoint } = await this.crawlCheckpoint(checkpoint, limit);
-            if (nextCheckpoint) {
-                this.crawlerCheckpoints.push(nextCheckpoint);
-                return { exhausted: false };
+        if (!checkpoint && create) {
+            try {
+                const snapshot = this.captureRoomTimeline(roomId);
+                if (snapshot?.token) this.inFlightRoomTokens.set(roomId, snapshot.token);
+                if (snapshot?.token && (await this.getCompletedRoomToken(roomId)) === snapshot.token) {
+                    return { exhausted: true, scanned: 0, indexed: 0, canContinue: false, reason: "end" };
+                }
+                if (this.pendingCheckpointUpdates.has(roomId)) {
+                    return { exhausted: false, scanned: 0, indexed: 0, canContinue: true };
+                }
+                await this.addRoomCheckpoint(roomId, false, snapshot);
+            } catch (error) {
+                return { exhausted: false, scanned: 0, indexed: 0, canContinue: true, error };
             }
-            return { exhausted: true };
-        } catch (e) {
-            this.logger.warn("Error backfilling room events", roomId, e);
-            this.crawlerCheckpoints.push(checkpoint);
-            return { exhausted: false, error: e };
+            checkpoint = this.takeRoomCheckpoint(roomId, direction);
+        }
+        if (!checkpoint) {
+            const pending = this.pendingCheckpointUpdates.has(roomId);
+            return {
+                exhausted: !pending,
+                scanned: 0,
+                indexed: 0,
+                canContinue: pending,
+                reason: pending ? undefined : "end",
+            };
+        }
+        try {
+            const rootToken =
+                checkpoint.rootToken ??
+                (this.captureRoomTimeline(roomId)?.token === checkpoint.token ? checkpoint.token : undefined);
+            if (direction === Direction.Backward && rootToken) this.inFlightRoomTokens.set(roomId, rootToken);
+            const result = await this.crawlCheckpoint(checkpoint, limit);
+            if (result.nextCheckpoint && !this.closed) this.crawlerCheckpoints.push(result.nextCheckpoint);
+            const moreGaps =
+                this.crawlerCheckpoints.some(
+                    (item) => item.roomId === roomId && item.direction === Direction.Backward,
+                ) || this.pendingCheckpointUpdates.has(roomId);
+            const currentLiveToken = direction === Direction.Backward ? this.captureRoomTimeline(roomId)?.token : null;
+            const sameRoot = rootToken && currentLiveToken === rootToken;
+            const changedRoot = Boolean(rootToken && currentLiveToken && currentLiveToken !== rootToken);
+            const exhausted = result.reason === "end" && !result.nextCheckpoint && !moreGaps && !changedRoot;
+            // Only an actual end of history is durable completion. Missing/stalled cursors
+            // may be recoverable; a future reset with the same token must be retried.
+            if (exhausted && result.reason === "end" && direction === Direction.Backward && sameRoot) {
+                const completionManager = this.activeManager();
+                if (!completionManager || client !== this.indexClient) {
+                    return {
+                        exhausted: false,
+                        scanned: result.scanned,
+                        indexed: result.indexed,
+                        canContinue: false,
+                        error: new Error("Index account changed"),
+                    };
+                }
+                try {
+                    await completionManager.markRoomHistoryComplete?.(roomId, rootToken);
+                    if (this.activeManager() !== completionManager || client !== this.indexClient) {
+                        return {
+                            exhausted: false,
+                            scanned: result.scanned,
+                            indexed: result.indexed,
+                            canContinue: false,
+                            error: new Error("Index account changed"),
+                        };
+                    }
+                    this.completedRoomTokens.set(roomId, rootToken);
+                } catch (error) {
+                    return {
+                        exhausted: false,
+                        scanned: result.scanned,
+                        indexed: result.indexed,
+                        canContinue: false,
+                        error: WebEventIndexError.from(error, "markRoomHistoryComplete"),
+                    };
+                }
+            }
+            if (result.reason === "missing_token" || result.reason === "stalled") {
+                return {
+                    exhausted: false,
+                    scanned: result.scanned,
+                    indexed: result.indexed,
+                    reason: result.reason,
+                    canContinue: false,
+                    error: new WebEventIndexError({
+                        code: "cursor_unavailable",
+                        operation: "backfill",
+                        retryability: "reinitialize",
+                    }),
+                };
+            }
+            const canContinue =
+                !exhausted &&
+                (Boolean(result.nextCheckpoint) ||
+                    this.pendingCheckpointUpdates.has(roomId) ||
+                    this.crawlerCheckpoints.some(
+                        (item) => item.roomId === roomId && item.direction === Direction.Backward,
+                    ));
+            return {
+                exhausted,
+                scanned: result.scanned,
+                indexed: result.indexed,
+                reason: result.reason,
+                canContinue,
+            };
+        } catch (error) {
+            const indexError = WebEventIndexError.from(error, "backfill");
+            this.logger.warn("Error backfilling room events", roomId, indexError.code);
+            if (!this.closed) this.crawlerCheckpoints.push(checkpoint);
+            return {
+                exhausted: false,
+                scanned: 0,
+                indexed: 0,
+                canContinue: !this.closed,
+                error: indexError,
+            };
         }
     }
 
@@ -826,9 +1156,9 @@ export default class EventIndex extends EventEmitter {
         fromEvent?: string,
         direction: string = EventTimeline.BACKWARDS,
     ): Promise<MatrixEvent[]> {
-        const client = MatrixClientPeg.safeGet();
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
-        if (!indexManager) return [];
+        const indexManager = this.indexManager;
+        if (!indexManager || this.closed || MatrixClientPeg.get() !== this.indexClient)
+            throw new Error("Event index unavailable");
 
         const loadArgs: ILoadArgs = {
             roomId: room.roomId,
@@ -847,14 +1177,39 @@ export default class EventIndex extends EventEmitter {
             events = await indexManager.loadFileEvents(loadArgs);
         } catch (e) {
             this.logger.debug("Error getting file events", e);
-            return [];
+            throw e;
         }
 
-        const eventMapper = client.getEventMapper();
+        if (this.closed || MatrixClientPeg.get() !== this.indexClient) throw new Error("Event index account changed");
+        return this.mapFileEvents(room, events);
+    }
+
+    /** Query Web attachments inside the index, retaining its opaque cursor and exhaustion flag. */
+    public async queryFileEvents(
+        room: Room,
+        query: Omit<IFileQuery, "roomId">,
+    ): Promise<{ events: MatrixEvent[]; cursor?: string; exhausted: boolean }> {
+        const manager = this.indexManager;
+        if (!manager?.supportsFilteredFileQuery() || this.closed || MatrixClientPeg.get() !== this.indexClient) {
+            throw new Error("Filtered file query unavailable");
+        }
+        const page = await manager.queryFileEvents({ ...query, roomId: room.roomId });
+        if (this.closed || MatrixClientPeg.get() !== this.indexClient) throw new Error("Event index account changed");
+        return { ...page, events: this.mapFileEvents(room, page.events) };
+    }
+
+    private mapFileEvents(room: Room, events: IEventAndProfile[]): MatrixEvent[] {
+        const eventMapper = MatrixClientPeg.safeGet().getEventMapper();
 
         // Turn the events into MatrixEvent objects.
         const matrixEvents = events.map((e) => {
             const matrixEvent = eventMapper(e.event);
+            if (e.original_event) {
+                // The indexed projection may be decrypted while original_event keeps the wire type. Its content
+                // must already be the clear, unedited attachment content; never use the current projection as base.
+                const original = new MatrixEvent({ ...e.original_event, type: matrixEvent.getType() });
+                rememberOriginalFileEvent(matrixEvent, original, e.file_edits);
+            }
 
             const member = new RoomMember(room.roomId, matrixEvent.getSender()!);
 
@@ -1033,7 +1388,7 @@ export default class EventIndex extends EventEmitter {
      * statistics.
      */
     public async getStats(): Promise<IIndexStats | undefined> {
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
+        const indexManager = this.activeManager();
         return indexManager?.getStats();
     }
 
@@ -1047,7 +1402,7 @@ export default class EventIndex extends EventEmitter {
      * the given room, false otherwise.
      */
     public async isRoomIndexed(roomId: string): Promise<boolean | undefined> {
-        const indexManager = PlatformPeg.get()?.getEventIndexingManager();
+        const indexManager = this.activeManager();
         return indexManager?.isRoomIndexed(roomId);
     }
 

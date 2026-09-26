@@ -9,41 +9,31 @@ import type {
     ICrawlerCheckpoint,
     IEventAndProfile,
     IIndexStats,
+    IFileQuery,
+    IFileQueryPage,
     ILoadArgs,
     ISearchArgs,
 } from "../BaseEventIndexManager";
 import type { IEventWithRoomId, IMatrixProfile, IResultRoomEvents, ISearchResult } from "matrix-js-sdk/src/matrix";
+import { WebEventIndexDatabase } from "./WebEventIndexDatabase";
+import {
+    applyEventEditToIndex,
+    deleteEventFromIndex,
+    makeEventRecord,
+    projectLatestEdit,
+    type EventRecord,
+} from "./webEventEditStore";
+import { addRecord, requestToPromise, transactionDone } from "./webEventIndexIdb";
+import { WebEventIndexError, type WebEventIndexWorkerOperation } from "./WebEventIndexError";
 
 interface WorkerRequest {
     id: number;
-    name: string;
+    name: WebEventIndexWorkerOperation;
     args: any[];
-}
-
-interface WorkerResponse {
-    id: number;
-    reply?: any;
-    error?: string | { message: string };
-}
-
-interface EventRecord {
-    event_id: string;
-    room_id: string;
-    sender?: string;
-    origin_server_ts?: number;
-    type?: string;
-    msgtype?: string | null;
-    body?: string;
-    body_lower?: string;
-    has_url?: boolean;
-    event_json: string;
-    profile_json?: string;
 }
 
 const ctx = self as any;
 
-const DB_PREFIX = "element-web-event-index";
-const DB_VERSION = 2;
 const DEFAULT_MAX_EVENT_AGE_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_TS = Number.MAX_SAFE_INTEGER;
@@ -51,86 +41,11 @@ const MAX_EVENT_ID = "\uffff";
 // 单次搜索最多扫描的记录数，避免罕见关键词导致一次性遍历整个 IndexedDB 卡顿。
 const MAX_SCAN_RECORDS = 2000;
 const TEXT_MESSAGE_TYPES = new Set(["m.text", "m.notice", "m.emote"]);
-
-let db: IDBDatabase | null = null;
-let dbName: string | null = null;
 let maxEventAgeMs = DEFAULT_MAX_EVENT_AGE_DAYS * DAY_MS;
-
-function encodeKeyPart(value: string): string {
-    return encodeURIComponent(value).replace(/%/g, "_");
-}
-
-function buildDbName(userId: string, deviceId: string): string {
-    return `${DB_PREFIX}-${encodeKeyPart(userId)}-${encodeKeyPart(deviceId)}`;
-}
-
-function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-}
-
-function transactionDone(tx: IDBTransaction): Promise<void> {
-    return new Promise((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onabort = () => reject(tx.error);
-        tx.onerror = () => reject(tx.error);
-    });
-}
-
-function addRecord(store: IDBObjectStore, record: EventRecord): Promise<boolean> {
-    return new Promise((resolve, reject) => {
-        const request = store.add(record);
-        request.onsuccess = () => resolve(true);
-        request.onerror = (event) => {
-            if (request.error?.name === "ConstraintError") {
-                event.preventDefault();
-                resolve(false);
-                return;
-            }
-            reject(request.error);
-        };
-    });
-}
-
-async function openDb(name: string): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(name, DB_VERSION);
-        request.onupgradeneeded = () => {
-            const database = request.result;
-
-            if (database.objectStoreNames.contains("dbs")) {
-                database.deleteObjectStore("dbs");
-            }
-
-            if (!database.objectStoreNames.contains("events")) {
-                const store = database.createObjectStore("events", { keyPath: "event_id" });
-                store.createIndex("room_id", "room_id", { unique: false });
-                store.createIndex("room_ts", ["room_id", "origin_server_ts", "event_id"], { unique: false });
-                store.createIndex(
-                    "room_msgtype_ts",
-                    ["room_id", "msgtype", "origin_server_ts", "event_id"],
-                    { unique: false },
-                );
-            }
-
-            if (!database.objectStoreNames.contains("checkpoints")) {
-                database.createObjectStore("checkpoints", { keyPath: ["room_id", "token", "direction"] });
-            }
-
-            if (!database.objectStoreNames.contains("meta")) {
-                database.createObjectStore("meta", { keyPath: "key" });
-            }
-        };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-}
+const eventIndexDatabase = new WebEventIndexDatabase();
 
 function ensureDb(): IDBDatabase {
-    if (!db) throw new Error("Event index not initialized");
-    return db;
+    return eventIndexDatabase.get();
 }
 
 function getCutoffTs(): number {
@@ -155,31 +70,14 @@ function isEventTooOld(ev: IEventWithRoomId, cutoffTs: number): boolean {
     return ts < cutoffTs;
 }
 
-function extractBody(ev: IEventWithRoomId): string | null {
-    if (ev.type !== "m.room.message") return null;
-    const content = (ev as any).content ?? {};
-    const msgtype = content.msgtype;
-    if (typeof msgtype !== "string" || !TEXT_MESSAGE_TYPES.has(msgtype)) return null;
-    return content.body ?? null;
-}
-
-function hasUrl(content: any): boolean {
-    if (!content || typeof content !== "object") return false;
-    if (content.url || content.file?.url) return true;
-    if (content.info?.thumbnail_url || content.info?.thumbnail_file?.url) return true;
-    return false;
-}
-
 async function supportsEventIndexing(): Promise<boolean> {
     return typeof indexedDB !== "undefined";
 }
 
-async function initEventIndex(userId: string, deviceId: string): Promise<void> {
-    const name = buildDbName(userId, deviceId);
-    if (db && dbName === name) return;
-    db?.close();
-    db = await openDb(name);
-    dbName = name;
+async function initEventIndex(userId: string, deviceId: string): Promise<number> {
+    const sourceVersion = await eventIndexDatabase.init(userId, deviceId);
+    maxEventAgeMs = DEFAULT_MAX_EVENT_AGE_DAYS * DAY_MS;
+    return sourceVersion;
 }
 
 async function addEventToIndex(ev: IEventWithRoomId, profile: IMatrixProfile): Promise<void> {
@@ -187,36 +85,25 @@ async function addEventToIndex(ev: IEventWithRoomId, profile: IMatrixProfile): P
     const cutoffTs = getCutoffTs();
     if (isEventTooOld(ev, cutoffTs)) return;
 
-    const database = ensureDb();
-    const tx = database.transaction("events", "readwrite");
+    const tx = ensureDb().transaction(["events", "redacted", "edit_relations"], "readwrite");
     const store = tx.objectStore("events");
+    if (!(await requestToPromise(tx.objectStore("redacted").get(ev.event_id)))) {
+        const record = await projectLatestEdit(tx, makeEventRecord(ev, profile));
+        // Re-decryption of the same event ID replaces its previous encrypted/failed content.
+        store.put(record);
+    }
+    await transactionDone(tx);
+}
 
-    const content = (ev as any).content ?? {};
-    const msgtype = ev.type === "m.room.message" ? content.msgtype ?? null : null;
-    const body = extractBody(ev) ?? "";
-
-    await addRecord(store, {
-        event_id: ev.event_id,
-        room_id: ev.room_id,
-        sender: ev.sender,
-        origin_server_ts: ev.origin_server_ts ?? 0,
-        type: ev.type,
-        msgtype,
-        body,
-        body_lower: body.toLowerCase(),
-        has_url: hasUrl(content),
-        event_json: JSON.stringify(ev),
-        profile_json: JSON.stringify(profile ?? {}),
-    });
-
+async function applyEventEdit(edit: IEventWithRoomId): Promise<void> {
+    const tx = ensureDb().transaction(["events", "edit_relations", "redacted"], "readwrite");
+    await applyEventEditToIndex(tx, edit);
     await transactionDone(tx);
 }
 
 async function deleteEvent(eventId: string): Promise<boolean> {
-    const database = ensureDb();
-    const tx = database.transaction("events", "readwrite");
-    const store = tx.objectStore("events");
-    store.delete(eventId);
+    const tx = ensureDb().transaction(["events", "edit_relations", "redacted"], "readwrite");
+    await deleteEventFromIndex(tx, eventId);
     await transactionDone(tx);
     return true;
 }
@@ -250,9 +137,9 @@ function parseNextBatch(nextBatch?: string): { key?: IDBValidKey; count?: number
         const parsed = JSON.parse(nextBatch);
         if (parsed && typeof parsed === "object") {
             return {
-                key: (parsed as any).key as IDBValidKey | undefined,
-                count: (parsed as any).count as number | undefined,
-                exhausted: Boolean((parsed as any).exhausted),
+                key: parsed.key,
+                count: parsed.count,
+                exhausted: Boolean(parsed.exhausted),
             };
         }
         return { key: parsed as IDBValidKey };
@@ -309,7 +196,11 @@ async function buildContext(
     profile: IMatrixProfile,
     beforeLimit: number,
     afterLimit: number,
-): Promise<{ events_before: IEventWithRoomId[]; events_after: IEventWithRoomId[]; profile_info: Record<string, IMatrixProfile> }> {
+): Promise<{
+    events_before: IEventWithRoomId[];
+    events_after: IEventWithRoomId[];
+    profile_info: Record<string, IMatrixProfile>;
+}> {
     const roomId = event.room_id;
     const ts = event.origin_server_ts ?? 0;
     const eventId = event.event_id;
@@ -371,11 +262,11 @@ async function scanRoomForMatches(
                 return;
             }
             scanned += 1;
-            lastKey = cursor.key as IDBValidKey;
+            lastKey = cursor.key;
             const record = cursor.value as EventRecord;
             if (record.type !== "m.room.message" || !TEXT_MESSAGE_TYPES.has(record.msgtype ?? "")) {
                 if (scanned >= MAX_SCAN_RECORDS) {
-                    nextKey = cursor.key as IDBValidKey;
+                    nextKey = cursor.key;
                     resolved = true;
                     resolve();
                     return;
@@ -387,14 +278,14 @@ async function scanRoomForMatches(
             if (bodyLower.includes(termLower)) {
                 records.push(record);
                 if (records.length >= limit) {
-                    nextKey = cursor.key as IDBValidKey;
+                    nextKey = cursor.key;
                     resolved = true;
                     resolve();
                     return;
                 }
             }
             if (scanned >= MAX_SCAN_RECORDS) {
-                nextKey = cursor.key as IDBValidKey;
+                nextKey = cursor.key;
                 resolved = true;
                 resolve();
                 return;
@@ -457,31 +348,21 @@ async function addHistoricEvents(
 ): Promise<boolean> {
     const cutoffTs = getCutoffTs();
     const database = ensureDb();
-    const tx = database.transaction(["events", "checkpoints"], "readwrite");
+    const tx = database.transaction(["events", "checkpoints", "redacted", "edit_relations"], "readwrite");
     const eventsStore = tx.objectStore("events");
     const checkpointsStore = tx.objectStore("checkpoints");
+    const redactedStore = tx.objectStore("redacted");
 
     const insertPromises: Array<Promise<boolean>> = [];
     for (const item of events) {
         if (!item.event.event_id) continue;
         if (isEventTooOld(item.event, cutoffTs)) continue;
-        const content = (item.event as any).content ?? {};
-        const msgtype = item.event.type === "m.room.message" ? content.msgtype ?? null : null;
-        const body = extractBody(item.event) ?? "";
         insertPromises.push(
-            addRecord(eventsStore, {
-                event_id: item.event.event_id,
-                room_id: item.event.room_id,
-                sender: item.event.sender,
-                origin_server_ts: item.event.origin_server_ts ?? 0,
-                type: item.event.type,
-                msgtype,
-                body,
-                body_lower: body.toLowerCase(),
-                has_url: hasUrl(content),
-                event_json: JSON.stringify(item.event),
-                profile_json: JSON.stringify(item.profile ?? {}),
-            }),
+            (async () => {
+                if (await requestToPromise(redactedStore.get(item.event.event_id))) return false;
+                const record = await projectLatestEdit(tx, makeEventRecord(item.event, item.profile));
+                return addRecord(eventsStore, record);
+            })(),
         );
     }
 
@@ -495,6 +376,7 @@ async function addHistoricEvents(
             token: checkpoint.token,
             direction: checkpoint.direction,
             full_crawl: checkpoint.fullCrawl ? 1 : 0,
+            root_token: checkpoint.rootToken,
         });
     }
 
@@ -514,6 +396,7 @@ async function addCrawlerCheckpoint(checkpoint: ICrawlerCheckpoint): Promise<voi
         token: checkpoint.token,
         direction: checkpoint.direction,
         full_crawl: checkpoint.fullCrawl ? 1 : 0,
+        root_token: checkpoint.rootToken,
     });
     await transactionDone(tx);
 }
@@ -524,6 +407,35 @@ async function removeCrawlerCheckpoint(checkpoint: ICrawlerCheckpoint): Promise<
     const store = tx.objectStore("checkpoints");
     store.delete([checkpoint.roomId, checkpoint.token, checkpoint.direction] as IDBValidKey);
     await transactionDone(tx);
+}
+
+// Read revisions in the same snapshot as the projected event, before advancing its cursor.
+async function readFileEdits(tx: IDBTransaction, item: IEventAndProfile): Promise<void> {
+    const candidates = (await requestToPromise(
+        tx.objectStore("edit_relations").index("target_id").getAll(item.event.event_id),
+    )) as Array<{
+        event_id: string;
+        room_id: string;
+        sender: string;
+        timestamp: number;
+        content_json: string;
+    }>;
+    const valid = await Promise.all(
+        candidates.map(async (candidate) =>
+            candidate.room_id === item.event.room_id &&
+            candidate.sender === item.event.sender &&
+            !(await requestToPromise(tx.objectStore("redacted").get(candidate.event_id)))
+                ? {
+                      event_id: candidate.event_id,
+                      room_id: candidate.room_id,
+                      sender: candidate.sender,
+                      timestamp: candidate.timestamp,
+                      content: JSON.parse(candidate.content_json) as Record<string, unknown>,
+                  }
+                : null,
+        ),
+    );
+    item.file_edits = valid.filter((entry) => entry !== null);
 }
 
 async function loadFileEvents(args: ILoadArgs): Promise<IEventAndProfile[]> {
@@ -542,12 +454,14 @@ async function loadFileEvents(args: ILoadArgs): Promise<IEventAndProfile[]> {
     }
 
     const database = ensureDb();
-    const tx = database.transaction("events", "readonly");
+    const tx = database.transaction(["events", "edit_relations", "redacted"], "readonly");
+    const completed = transactionDone(tx);
     const store = tx.objectStore("events");
     const cursorDirection: IDBCursorDirection = direction === "b" ? "prev" : "next";
     const range = buildRoomRange(roomId, startKey, cursorDirection === "prev" ? "prev" : "next");
     const msgtypes = new Set(["m.file", "m.image", "m.video", "m.audio"]);
     const results: IEventAndProfile[] = [];
+    const revisions: Promise<void>[] = [];
 
     const index = store.index("room_ts");
     await new Promise<void>((resolve, reject) => {
@@ -561,17 +475,140 @@ async function loadFileEvents(args: ILoadArgs): Promise<IEventAndProfile[]> {
             }
             const record = cursor.value as EventRecord;
             if (msgtypes.has(record.msgtype ?? "")) {
-                results.push({
+                const item: IEventAndProfile = {
                     event: JSON.parse(record.event_json) as IEventWithRoomId,
+                    original_event: record.original_event_json
+                        ? (JSON.parse(record.original_event_json) as IEventWithRoomId)
+                        : undefined,
                     profile: record.profile_json ? (JSON.parse(record.profile_json) as IMatrixProfile) : {},
-                });
+                };
+                results.push(item);
+                revisions.push(readFileEdits(tx, item));
             }
             cursor.continue();
         };
     });
 
-    await transactionDone(tx);
+    await Promise.all(revisions);
+    await completed;
     return results;
+}
+
+// Use the existing per-type index; keep one opaque cursor per message type so two streams merge in timestamp order.
+async function queryFileEvents(args: IFileQuery): Promise<IFileQueryPage> {
+    const categoryTypes = args.category === "media" ? ["m.image", "m.video"] : ["m.file", "m.audio"];
+    if (args.msgtype && !categoryTypes.includes(args.msgtype)) return { events: [], exhausted: true };
+    if (
+        (args.fromTs !== undefined && !Number.isFinite(args.fromTs)) ||
+        (args.toTs !== undefined && !Number.isFinite(args.toTs)) ||
+        (args.fromTs !== undefined && args.toTs !== undefined && args.fromTs >= args.toTs)
+    ) {
+        return { events: [], exhausted: true };
+    }
+    const types = args.msgtype ? [args.msgtype] : categoryTypes;
+    const starts: Record<string, IDBValidKey | undefined> = {};
+    if (args.cursor) {
+        try {
+            const parsed: unknown = JSON.parse(args.cursor);
+            if (!parsed || typeof parsed !== "object") throw new Error("Invalid cursor");
+            if (
+                "key" in parsed &&
+                Array.isArray(parsed.key) &&
+                parsed.key.length === 3 &&
+                parsed.key[0] === args.roomId &&
+                typeof parsed.key[1] === "number" &&
+                typeof parsed.key[2] === "string"
+            ) {
+                // Cursors from the earlier room_ts scan continue without re-reading newer records.
+                for (const type of types) starts[type] = [args.roomId, type, parsed.key[1], parsed.key[2]];
+            } else if ("byType" in parsed && parsed.byType && typeof parsed.byType === "object") {
+                for (const type of types) {
+                    const key = (parsed.byType as Record<string, unknown>)[type];
+                    if (key === undefined) continue;
+                    if (
+                        !Array.isArray(key) ||
+                        key.length !== 4 ||
+                        key[0] !== args.roomId ||
+                        key[1] !== type ||
+                        typeof key[2] !== "number" ||
+                        typeof key[3] !== "string"
+                    )
+                        throw new Error("Invalid cursor");
+                    starts[type] = key;
+                }
+            } else {
+                throw new Error("Invalid cursor");
+            }
+        } catch {
+            throw new WebEventIndexError({
+                code: "cursor_unavailable",
+                operation: "queryFileEvents",
+                retryability: "reinitialize",
+            });
+        }
+    }
+
+    const tx = ensureDb().transaction(["events", "edit_relations", "redacted"], "readonly");
+    const index = tx.objectStore("events").index("room_msgtype_ts");
+    const completed = transactionDone(tx);
+    const requests = types.map((type) => {
+        const lower = [args.roomId, type, args.fromTs ?? 0, ""] as IDBValidKey;
+        const upper = starts[type] ?? ([args.roomId, type, args.toTs ?? MAX_TS, MAX_EVENT_ID] as IDBValidKey);
+        const range = IDBKeyRange.bound(lower, upper, false, Boolean(starts[type]));
+        return index.openCursor(range, "prev");
+    });
+    const cursors = await Promise.all(requests.map((request) => requestToPromise(request)));
+
+    const events: IEventAndProfile[] = [];
+    const revisions: Promise<void>[] = [];
+    const term = args.term.trim().toLowerCase();
+    const lastKeys = { ...starts };
+    let scanned = 0;
+    while (scanned < MAX_SCAN_RECORDS && events.length < Math.max(1, args.limit)) {
+        const a = cursors[0]?.value as EventRecord | undefined;
+        const b = cursors[1]?.value as EventRecord | undefined;
+        if (!a && !b) break;
+        const indexToRead =
+            !b ||
+            (a && (a.origin_server_ts ?? 0) > (b.origin_server_ts ?? 0)) ||
+            (a && a.origin_server_ts === b.origin_server_ts && a.event_id > b.event_id)
+                ? 0
+                : 1;
+        const cursor = cursors[indexToRead]!;
+        const record = cursor.value as EventRecord;
+        const type = types[indexToRead];
+        lastKeys[type] = [args.roomId, type, record.origin_server_ts ?? 0, record.event_id];
+        scanned++;
+        const event = JSON.parse(record.event_json) as IEventWithRoomId;
+        const content = (event as IEventWithRoomId & { content?: { filename?: string; body?: string } }).content;
+        if (
+            (!args.sender || (record.sender ?? event.sender) === args.sender) &&
+            (args.toTs === undefined || (record.origin_server_ts ?? 0) < args.toTs) &&
+            (!term ||
+                [content?.filename, content?.body].some(
+                    (name) => typeof name === "string" && name.toLowerCase().includes(term),
+                ))
+        ) {
+            const item: IEventAndProfile = {
+                event,
+                original_event: record.original_event_json
+                    ? (JSON.parse(record.original_event_json) as IEventWithRoomId)
+                    : undefined,
+                profile: record.profile_json ? JSON.parse(record.profile_json) : {},
+            };
+            events.push(item);
+            revisions.push(readFileEdits(tx, item));
+        }
+        if (events.length >= Math.max(1, args.limit) || scanned >= MAX_SCAN_RECORDS) break;
+        const next = requestToPromise(requests[indexToRead]);
+        cursor.continue();
+        cursors[indexToRead] = await next;
+    }
+    const exhausted =
+        cursors.every((cursor) => !cursor) && events.length < Math.max(1, args.limit) && scanned < MAX_SCAN_RECORDS;
+    await Promise.all(revisions);
+    await completed;
+    return { events, cursor: JSON.stringify({ byType: lastKeys }), exhausted };
 }
 
 async function loadCheckpoints(): Promise<ICrawlerCheckpoint[]> {
@@ -581,19 +618,38 @@ async function loadCheckpoints(): Promise<ICrawlerCheckpoint[]> {
     const results = await requestToPromise(store.getAll());
     await transactionDone(tx);
 
-    return (results as Array<{ room_id: string; token: string; direction: string; full_crawl?: number }>).map(
-        (row) => ({
-            roomId: row.room_id,
-            token: row.token,
-            direction: row.direction as any,
-            fullCrawl: row.full_crawl === 1,
-        }),
-    );
+    return (
+        results as Array<{
+            room_id: string;
+            token: string;
+            direction: string;
+            full_crawl?: number;
+            root_token?: string;
+        }>
+    ).map((row) => ({
+        roomId: row.room_id,
+        token: row.token,
+        direction: row.direction as any,
+        fullCrawl: row.full_crawl === 1,
+        rootToken: row.root_token,
+    }));
+}
+
+async function getCompletedRoomToken(roomId: string): Promise<string | null> {
+    const tx = ensureDb().transaction("meta", "readonly");
+    const row = await requestToPromise(tx.objectStore("meta").get(`completed-room:${roomId}`));
+    await transactionDone(tx);
+    return typeof row?.value === "string" ? row.value : null;
+}
+
+async function markRoomHistoryComplete(roomId: string, token: string): Promise<void> {
+    const tx = ensureDb().transaction("meta", "readwrite");
+    tx.objectStore("meta").put({ key: `completed-room:${roomId}`, value: token });
+    await transactionDone(tx);
 }
 
 async function closeEventIndex(): Promise<void> {
-    db?.close();
-    db = null;
+    eventIndexDatabase.close();
 }
 
 async function getStats(): Promise<IIndexStats> {
@@ -647,27 +703,24 @@ async function setUserVersion(version: number): Promise<void> {
     await transactionDone(tx);
 }
 
-async function deleteEventIndex(): Promise<void> {
-    db?.close();
-    db = null;
-
-    if (!dbName) return;
-
-    await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase(dbName!);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-        request.onblocked = () => resolve();
-    });
-    dbName = null;
+async function getCompatibilityWarnings(): Promise<string[]> {
+    const tx = ensureDb().transaction("meta", "readonly");
+    const row = await requestToPromise(tx.objectStore("meta").get("legacy_unverified_edit_count"));
+    await transactionDone(tx);
+    return typeof row?.value === "number" && row.value > 0 ? ["legacy_edits_unverified"] : [];
 }
 
-const handlers: Record<string, (...args: any[]) => Promise<any>> = {
+async function deleteEventIndex(): Promise<void> {
+    await eventIndexDatabase.delete();
+}
+
+const handlers = {
     supportsEventIndexing,
     initEventIndex,
     setMaxEventAgeDays,
     addEventToIndex,
     deleteEvent,
+    applyEventEdit,
     isEventIndexEmpty,
     isRoomIndexed,
     commitLiveEvents,
@@ -676,26 +729,32 @@ const handlers: Record<string, (...args: any[]) => Promise<any>> = {
     addCrawlerCheckpoint,
     removeCrawlerCheckpoint,
     loadFileEvents,
+    queryFileEvents,
     loadCheckpoints,
+    getCompletedRoomToken,
+    markRoomHistoryComplete,
     closeEventIndex,
     getStats,
     getUserVersion,
     setUserVersion,
+    getCompatibilityWarnings,
     deleteEventIndex,
-};
+} satisfies Record<WebEventIndexWorkerOperation, (...args: any[]) => Promise<any>>;
 
-ctx.onmessage = async (event: MessageEvent<WorkerRequest>): Promise<void> => {
+// Serialize lifecycle operations with reads and writes: a queued account switch or close
+// cannot run while an older request is still using the previous account's database.
+let queue = Promise.resolve();
+ctx.onmessage = (event: MessageEvent<WorkerRequest>): void => {
     const { id, name, args } = event.data;
-    const handler = handlers[name];
-    if (!handler) {
-        ctx.postMessage({ id, error: `Unknown handler: ${name}` } as WorkerResponse);
-        return;
-    }
-    try {
-        const reply = await handler(...args);
-        ctx.postMessage({ id, reply } as WorkerResponse);
-    } catch (e) {
-        const error = e instanceof Error ? e.message : String(e);
-        ctx.postMessage({ id, error } as WorkerResponse);
-    }
+    queue = queue
+        .then(async () => {
+            const handler = handlers[name];
+            if (!handler) throw new Error(`Unknown handler: ${name}`);
+            const reply: unknown = await Reflect.apply(handler, undefined, args);
+            ctx.postMessage({ id, reply });
+        })
+        .catch((error: unknown) => {
+            const operation = Object.hasOwn(handlers, name) ? name : "rpc";
+            ctx.postMessage({ id, error: WebEventIndexError.from(error, operation).toPayload() });
+        });
 };

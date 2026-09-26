@@ -8,35 +8,41 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { createRef } from "react";
-import {
-    type MatrixEvent,
-    type Room,
-    EventTimeline,
-    MatrixEventEvent,
-    RoomEvent,
-} from "matrix-js-sdk/src/matrix";
-import { logger } from "matrix-js-sdk/src/logger";
+import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
+import type { StateSnapshot, VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso } from "react-virtuoso";
 import FilesIcon from "@vector-im/compound-design-tokens/assets/web/icons/files";
-import { Form, Search } from "@vector-im/compound-web";
-import { TimelineSeparator } from "@element-hq/web-shared-components";
+import { MediaSearchGridView, SearchInputView, type MediaSearchItem } from "@element-hq/web-shared-components";
 
 import { MatrixClientPeg } from "../../MatrixClientPeg";
-import EventIndexPeg from "../../indexing/EventIndexPeg";
+import PlatformPeg from "../../PlatformPeg";
 import { _t } from "../../languageHandler";
-import { getUserLanguage } from "../../i18n/settings";
 import SearchWarning, { WarningKind } from "../views/elements/SearchWarning";
 import BaseCard from "../views/right_panel/BaseCard";
 import Spinner from "../views/elements/Spinner";
+import AccessibleButton from "../views/elements/AccessibleButton";
 import RoomContext, { TimelineRenderingType } from "../../contexts/RoomContext";
 import Measured from "../views/elements/Measured";
 import EmptyState from "../views/right_panel/EmptyState";
 import { ScopedRoomContextProvider } from "../../contexts/ScopedRoomContext.tsx";
-import ScrollPanel from "./ScrollPanel";
 import { FilterTabGroup } from "../views/elements/FilterTabGroup";
-import SearchResultTile from "../views/rooms/SearchResultTile";
-import { formatFullDateNoDayNoTime } from "../../DateUtils";
+import { RoomFileSearchTile } from "../views/rooms/RoomFileSearchTile";
+import { RoomMediaSearchTile } from "../views/rooms/RoomMediaSearchTile";
 import { EventPresentationContextProvider } from "../../utils/EventPresentationContextProvider";
 import { Layout } from "../../settings/enums/Layout";
+import { FileSearchInputViewModel } from "../../viewmodels/search/FileSearchInputViewModel";
+import { RoomFileSearchViewModel, type RoomFileSearchSnapshot } from "../../viewmodels/search/RoomFileSearchViewModel";
+import { RoomMediaSearchViewModel } from "../../viewmodels/search/RoomMediaSearchViewModel";
+import { RoomFileLiveEvents } from "../../search/RoomFileLiveEvents";
+import type { RoomFileSearchFilters } from "../../search/RoomFileSearchFilters";
+import { WebEventIndexError } from "../../indexing/web/WebEventIndexError";
+import dis from "../../dispatcher/dispatcher";
+import { Action } from "../../dispatcher/actions";
+import { UserTab } from "../views/dialogs/UserTab";
+
+function FilePanelFooter({ context }: { context: React.ReactNode }): React.ReactNode {
+    return <ul className="mx_FilePanel_mediaFooter">{context}</ul>;
+}
 
 interface IProps {
     roomId: string;
@@ -45,13 +51,7 @@ interface IProps {
 
 interface IState {
     narrow: boolean;
-    events: MatrixEvent[];
-    cursor?: string;
-    activeTab: FilePanelTab;
-    searchTerm: string;
-    loading: boolean;
-    exhausted: boolean;
-    backfillExhausted: boolean;
+    search: RoomFileSearchSnapshot;
 }
 
 /*
@@ -61,214 +61,133 @@ class FilePanel extends React.Component<IProps, IState> {
     public static contextType = RoomContext;
     declare public context: React.ContextType<typeof RoomContext>;
 
-    // This is used to track if a decrypted event was a live event and should be
-    // added to the timeline.
-    private decryptingEvents = new Set<string>();
     private card = createRef<HTMLDivElement>();
+    private filesList = createRef<VirtuosoHandle>();
+    private mediaList = createRef<VirtuosoHandle>();
+    private readonly scrollPositions = new Map<string, StateSnapshot>();
+    private searchVm: FileSearchInputViewModel | null = null;
+    private resultsVm: RoomFileSearchViewModel | null = null;
+    private mediaVm: RoomMediaSearchViewModel | null = null;
+    private unsubscribeResults: (() => void) | null = null;
+    private liveEvents: RoomFileLiveEvents | null = null;
 
     public state: IState = {
         narrow: false,
-        events: [],
-        cursor: undefined,
-        activeTab: FilePanelTab.Files,
-        searchTerm: "",
-        loading: true,
-        exhausted: false,
-        backfillExhausted: false,
+        search: {
+            events: [],
+            activeTab: FilePanelTab.Files,
+            searchTerm: "",
+            filters: { sender: "", fromDate: "", toDate: "", type: "all" },
+            loading: true,
+            exhausted: false,
+            accessLimited: false,
+            stopped: false,
+            draftPending: false,
+            localPagesRemaining: false,
+            scanned: 0,
+            filterInvalid: false,
+            status: _t("file_panel|searching"),
+        },
     };
 
-    private onRoomTimeline = (
-        ev: MatrixEvent,
-        room: Room | undefined,
-        toStartOfTimeline: boolean | undefined,
-        removed: boolean,
-        data: any,
-    ): void => {
-        if (room?.roomId !== this.props.roomId) return;
-        if (toStartOfTimeline || !data || !data.liveEvent || ev.isRedacted()) return;
-
-        const client = MatrixClientPeg.safeGet();
-        void client.decryptEventIfNeeded(ev);
-
-        if (ev.isBeingDecrypted()) {
-            this.decryptingEvents.add(ev.getId()!);
-        } else {
-            this.addEncryptedLiveEventToList(ev);
-        }
-    };
-
-    private onEventDecrypted = (ev: MatrixEvent, err?: any): void => {
-        if (ev.getRoomId() !== this.props.roomId) return;
-        const eventId = ev.getId()!;
-
-        if (!this.decryptingEvents.delete(eventId)) return;
-        if (err) return;
-
-        this.addEncryptedLiveEventToList(ev);
-    };
-
-    private addEncryptedLiveEventToList(ev: MatrixEvent): void {
-        if (ev.getType() !== "m.room.message") return;
-        const msgtype = ev.getContent().msgtype;
-        if (typeof msgtype !== "string" || !FILE_EVENT_MSGTYPES.has(msgtype)) return;
-        const eventId = ev.getId();
-        if (!eventId) return;
-
-        this.setState((prev) => {
-            if (prev.events.some((e) => e.getId() === eventId)) return null;
-            return { ...prev, events: [ev, ...prev.events] };
-        });
-    }
-
-    // 保持向后兼容：旧实现/单测仍会直接调用该方法。
+    // Keep the legacy entry point for callers providing already-decrypted events.
     public addEncryptedLiveEvent(ev: MatrixEvent): void {
-        this.addEncryptedLiveEventToList(ev);
+        this.liveEvents?.addLiveEvent(ev);
     }
 
-    private async loadMoreFileEvents(): Promise<boolean> {
-        if (this.state.loading || this.state.exhausted) return false;
-
-        const client = MatrixClientPeg.safeGet();
-        const room = client.getRoom(this.props.roomId);
-        const eventIndex = EventIndexPeg.get();
-
-        if (!room || !eventIndex) {
-            this.setState({ exhausted: true });
-            return false;
-        }
-
-        this.setState({ loading: true });
-
-        try {
-            let backfillExhausted = this.state.backfillExhausted;
-            const events = await this.loadFileEventsWithOptionalBackfill(room, this.state.cursor, backfillExhausted);
-            backfillExhausted = events.backfillExhausted;
-
-            const newCursor = events.cursor ?? this.state.cursor;
-            this.setState((prev) => {
-                const existing = new Set(prev.events.map((e) => e.getId()));
-                const merged = [...prev.events];
-
-                for (const ev of events.events) {
-                    const id = ev.getId();
-                    if (!id || existing.has(id)) continue;
-                    existing.add(id);
-                    merged.push(ev);
-                }
-
-                const exhausted = events.reachedEnd;
-                return { ...prev, events: merged, cursor: newCursor, exhausted, backfillExhausted };
-            });
-
-            return !events.reachedEnd;
-        } finally {
-            this.setState({ loading: false });
-        }
+    public componentDidMount(): void {
+        const resultsVm = new RoomFileSearchViewModel();
+        this.resultsVm = resultsVm;
+        this.mediaVm = new RoomMediaSearchViewModel({ onEndReached: resultsVm.loadMoreLocal });
+        this.searchVm = new FileSearchInputViewModel({
+            onInvalidate: resultsVm.invalidateDraft,
+            onCommit: (term) => {
+                this.scrollPositions.clear();
+                this.liveEvents?.reset(this.props.roomId);
+                void resultsVm.reset(this.props.roomId, resultsVm.getSnapshot().activeTab, term);
+            },
+            onStop: resultsVm.stop,
+            onResume: resultsVm.resume,
+        });
+        this.unsubscribeResults = resultsVm.subscribe(() => {
+            const search = resultsVm.getSnapshot();
+            if (search.activeTab === FilePanelTab.Media) this.mediaVm?.updateResults(search.events, this.state.narrow);
+            this.searchVm?.updateStatus(
+                search.status,
+                search.loading && !search.draftPending,
+                search.stopped && !search.draftPending,
+            );
+            this.setState({ search });
+        });
+        this.liveEvents = new RoomFileLiveEvents(MatrixClientPeg.safeGet(), resultsVm, this.props.roomId);
+        void resultsVm.reset(this.props.roomId, FilePanelTab.Files, "");
     }
 
-    public async componentDidMount(): Promise<void> {
-        const client = MatrixClientPeg.safeGet();
-
-        await this.resetAndLoad(this.props.roomId);
-
-        if (!client.isRoomEncrypted(this.props.roomId)) return;
-        if (EventIndexPeg.get() !== null) {
-            client.on(RoomEvent.Timeline, this.onRoomTimeline);
-            client.on(MatrixEventEvent.Decrypted, this.onEventDecrypted);
+    public componentDidUpdate(prevProps: IProps): void {
+        if (prevProps.roomId !== this.props.roomId) {
+            this.searchVm?.reset();
+            this.liveEvents?.reset(this.props.roomId);
+            this.scrollPositions.clear();
+            void this.resultsVm?.reset(this.props.roomId, FilePanelTab.Files, "");
         }
-    }
-
-    public async componentDidUpdate(prevProps: IProps): Promise<void> {
-        if (prevProps.roomId === this.props.roomId) return;
-        await this.resetAndLoad(this.props.roomId);
     }
 
     public componentWillUnmount(): void {
-        const client = MatrixClientPeg.get();
-        if (client === null) return;
-
-        if (!client.isRoomEncrypted(this.props.roomId)) return;
-
-        if (EventIndexPeg.get() !== null) {
-            client.removeListener(RoomEvent.Timeline, this.onRoomTimeline);
-            client.removeListener(MatrixEventEvent.Decrypted, this.onEventDecrypted);
-        }
+        this.unsubscribeResults?.();
+        this.resultsVm?.dispose();
+        this.searchVm?.dispose();
+        this.mediaVm?.dispose();
+        this.mediaVm = null;
+        this.resultsVm = null;
+        this.searchVm = null;
+        this.liveEvents?.dispose();
+        this.scrollPositions.clear();
     }
+
+    private onFilterChange = (change: Partial<RoomFileSearchFilters>): void => {
+        this.scrollPositions.clear();
+        this.liveEvents?.reset(this.props.roomId);
+        this.resultsVm?.setFilters(change);
+    };
+
+    private onSenderChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+        this.onFilterChange({ sender: event.target.value });
+    };
+
+    private onFromDateChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+        this.onFilterChange({ fromDate: event.target.value });
+    };
+
+    private onToDateChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+        this.onFilterChange({ toDate: event.target.value });
+    };
+
+    private onTypeChange = (event: React.ChangeEvent<HTMLSelectElement>): void => {
+        this.onFilterChange({ type: event.target.value as RoomFileSearchFilters["type"] });
+    };
 
     private onMeasurement = (narrow: boolean): void => {
         this.setState({ narrow });
-    };
-
-    private async resetAndLoad(roomId: string): Promise<void> {
-        await new Promise<void>((resolve) => {
-            this.setState(
-                {
-                    events: [],
-                    cursor: undefined,
-                    searchTerm: "",
-                    activeTab: FilePanelTab.Files,
-                    loading: false,
-                    exhausted: false,
-                    backfillExhausted: false,
-                },
-                resolve,
-            );
-        });
-
-        await this.loadMoreFileEvents();
-    }
-
-    private async loadFileEventsWithOptionalBackfill(
-        room: Room,
-        cursor: string | undefined,
-        backfillExhausted: boolean,
-    ): Promise<{ events: MatrixEvent[]; cursor?: string; reachedEnd: boolean; backfillExhausted: boolean }> {
-        const eventIndex = EventIndexPeg.get();
-        if (!eventIndex) return { events: [], cursor, reachedEnd: true, backfillExhausted: true };
-
-        let events = await eventIndex.loadFileEvents(room, FILE_PANEL_BATCH_SIZE, cursor, EventTimeline.BACKWARDS);
-
-        // IndexedDB 里历史不足：按需 backfill 再继续拉取（减少“只能看到最近一天”的困扰）。
-        for (
-            let i = 0;
-            i < FILE_PANEL_MAX_BACKFILL_ATTEMPTS && events.length < FILE_PANEL_BATCH_SIZE && !backfillExhausted;
-            i++
-        ) {
-            const { exhausted, error } = await eventIndex.backfillRoom(room.roomId, FILE_PANEL_BACKFILL_LIMIT);
-            if (error) {
-                logger.warn("File panel backfill failed", error);
-            }
-            if (exhausted) {
-                backfillExhausted = true;
-                break;
-            }
-
-            const more = await eventIndex.loadFileEvents(room, FILE_PANEL_BATCH_SIZE, cursor, EventTimeline.BACKWARDS);
-            const seen = new Set(events.map((e) => e.getId()));
-            events = [
-                ...events,
-                ...more.filter((e) => {
-                    const id = e.getId();
-                    if (!id || seen.has(id)) return false;
-                    seen.add(id);
-                    return true;
-                }),
-            ];
+        if (this.state.search.activeTab === FilePanelTab.Media) {
+            this.mediaVm?.updateResults(this.state.search.events, narrow);
         }
-
-        const nextCursor = events.length > 0 ? (events[events.length - 1].getId() ?? cursor) : cursor;
-        const reachedEnd = backfillExhausted && events.length < FILE_PANEL_BATCH_SIZE;
-        return { events, cursor: nextCursor, reachedEnd, backfillExhausted };
-    }
+    };
 
     private onFillRequest = async (backwards: boolean): Promise<boolean> => {
-        if (backwards) return false;
-        return this.loadMoreFileEvents();
+        const search = this.resultsVm?.getSnapshot();
+        if (backwards || !search || search.error || search.stopped || search.draftPending || !search.events.length)
+            return false;
+        this.resultsVm?.loadMoreLocal();
+        return false;
     };
 
-    private onSearchChange = (value: string): void => {
-        this.setState({ searchTerm: value });
-    }
+    private onOpenIndexSettings = (): void => {
+        dis.dispatch({ action: Action.ViewUserSettings, initialTabId: UserTab.Security });
+    };
+
+    private onReload = (): void => {
+        PlatformPeg.get()?.reload();
+    };
 
     public render(): React.ReactNode {
         if (MatrixClientPeg.safeGet().isGuest()) {
@@ -318,32 +237,103 @@ class FilePanel extends React.Component<IProps, IState> {
 
         const isRoomEncrypted = MatrixClientPeg.safeGet().isRoomEncrypted(this.props.roomId);
 
-        const tabEvents = this.getFilteredEventsForActiveTab(this.state.events);
-        const filteredEvents = this.filterByFileName(tabEvents, this.state.searchTerm);
+        const search = this.state.search;
+        const filteredEvents = search.events;
 
         const listItems: React.ReactNode[] = [];
-        if (!filteredEvents.length && !this.state.loading) {
+        if (!filteredEvents.length && !search.loading && !search.error) {
             listItems.push(
                 <li key="file-panel-empty" className="mx_FilePanel_empty">
-                    {emptyState}
+                    {search.accessLimited
+                        ? _t("file_panel|history_access_limited")
+                        : search.exhausted
+                          ? emptyState
+                          : _t("file_panel|found_in_scanned_range")}
                 </li>,
             );
-        } else {
-            listItems.push(...this.buildGroupedEventTiles(filteredEvents, room.roomId));
         }
 
-        if (this.state.loading && this.state.events.length > 0) {
+        if (search.error) {
+            listItems.push(
+                <li key="file-panel-error" role="alert" className="mx_FilePanel_empty">
+                    {search.filterInvalid
+                        ? _t("file_panel|invalid_date_range")
+                        : search.error instanceof WebEventIndexError
+                          ? search.error.code === "connection_blocked"
+                              ? _t("file_panel|operation_pending")
+                              : search.error.retryability === "reinitialize" ||
+                                  search.error.retryability === "user_action"
+                                ? _t("file_panel|index_needs_attention")
+                                : search.error.code === "cursor_unavailable"
+                                  ? _t("file_panel|history_cursor_failed")
+                                  : _t("file_panel|load_failed")
+                          : search.error.message}
+                    {search.error instanceof WebEventIndexError && search.error.code === "connection_blocked" ? (
+                        <>
+                            <AccessibleButton kind="link_inline" onClick={this.onReload}>
+                                {_t("action|reload")}
+                            </AccessibleButton>
+                            <AccessibleButton kind="link_inline" onClick={this.onOpenIndexSettings}>
+                                {_t("common|go_to_settings")}
+                            </AccessibleButton>
+                        </>
+                    ) : this.resultsVm &&
+                      search.error instanceof WebEventIndexError &&
+                      search.error.retryability === "retry" ? (
+                        <AccessibleButton kind="link_inline" onClick={this.resultsVm.retry}>
+                            {_t("action|retry")}
+                        </AccessibleButton>
+                    ) : null}
+                </li>,
+            );
+        }
+
+        if (search.loading) {
             listItems.push(
                 <li key="file-panel-loading-more" className="mx_FilePanel_loading">
                     <Spinner />
+                    <span>{_t("file_panel|scanned_count", { count: search.scanned })}</span>
+                    <AccessibleButton kind="link_inline" onClick={this.resultsVm?.stop ?? null}>
+                        {_t("file_panel|stop_search")}
+                    </AccessibleButton>
                 </li>,
             );
         }
 
-        if (this.state.exhausted && filteredEvents.length > 0) {
+        if (search.stopped) {
+            listItems.push(
+                <li key="file-panel-stopped" className="mx_FilePanel_noMore">
+                    <span>{_t("file_panel|scanned_count", { count: search.scanned })}</span>
+                    <AccessibleButton kind="link_inline" onClick={this.resultsVm?.resume ?? null}>
+                        {_t("file_panel|continue_search")}
+                    </AccessibleButton>
+                </li>,
+            );
+        }
+
+        if (
+            !search.exhausted &&
+            !search.accessLimited &&
+            !search.loading &&
+            !search.error &&
+            !search.stopped &&
+            !search.draftPending
+        ) {
+            listItems.push(
+                <li key="file-panel-more" className="mx_FilePanel_noMore">
+                    <AccessibleButton kind="link_inline" onClick={() => void this.resultsVm?.loadMore()}>
+                        {_t("file_panel|continue_search")}
+                    </AccessibleButton>
+                </li>,
+            );
+        }
+
+        if ((search.exhausted || search.accessLimited) && filteredEvents.length > 0) {
             listItems.push(
                 <li key="file-panel-no-more" className="mx_FilePanel_noMore">
-                    <div className="mx_RoomView_topMarker">{_t("no_more_results")}</div>
+                    <div className="mx_RoomView_topMarker">
+                        {search.accessLimited ? _t("file_panel|history_access_limited") : _t("no_more_results")}
+                    </div>
                 </li>,
             );
         }
@@ -365,107 +355,99 @@ class FilePanel extends React.Component<IProps, IState> {
                     <SearchWarning isRoomEncrypted={isRoomEncrypted} kind={WarningKind.Files} />
 
                     <div className="mx_FilePanel_controls">
-                        <Form.Root
-                            className="mx_FilePanel_searchForm"
-                            onSubmit={(e) => {
-                                // compound-web 的 <Search> 内部使用 FormField，
-                                // 必须在 <Form.Root> 上下文中渲染；同时避免回车触发表单提交刷新页面。
-                                e.preventDefault();
-                            }}
-                        >
-                            <Search
-                                className="mx_FilePanel_search"
-                                name="file_panel_search"
-                                value={this.state.searchTerm}
-                                placeholder={_t("file_panel|search_placeholder")}
-                                onChange={(e) => this.onSearchChange(e.currentTarget.value)}
-                            />
-                        </Form.Root>
+                        {this.searchVm ? <SearchInputView vm={this.searchVm} /> : null}
 
                         <FilterTabGroup
                             name="file-panel"
-                            value={this.state.activeTab}
-                            onFilterChange={(tab) => this.setState({ activeTab: tab })}
+                            value={search.activeTab}
+                            onFilterChange={(tab) => {
+                                if (tab === search.activeTab) return;
+                                const term = this.searchVm?.settleDraft() ?? search.searchTerm;
+                                const list = search.activeTab === FilePanelTab.Files ? this.filesList : this.mediaList;
+                                list.current?.getState((state) =>
+                                    this.scrollPositions.set(`${this.props.roomId}/${search.activeTab}`, state),
+                                );
+                                this.liveEvents?.reset(this.props.roomId);
+                                void this.resultsVm?.reset(this.props.roomId, tab, term);
+                            }}
                             tabs={[
                                 { id: FilePanelTab.Media, label: _t("file_panel|tab_media") },
                                 { id: FilePanelTab.Files, label: _t("right_panel|files_button") },
                             ]}
                         />
+                        <details className="mx_FilePanel_advancedFilters">
+                            <summary>{_t("file_panel|filters")}</summary>
+                            <div className="mx_FilePanel_filters">
+                                <label>
+                                    {_t("file_panel|filter_sender")}
+                                    <input type="text" value={search.filters.sender} onChange={this.onSenderChange} />
+                                </label>
+                                <label>
+                                    {_t("file_panel|filter_from")}
+                                    <input
+                                        type="date"
+                                        value={search.filters.fromDate}
+                                        onChange={this.onFromDateChange}
+                                    />
+                                </label>
+                                <label>
+                                    {_t("file_panel|filter_to")}
+                                    <input type="date" value={search.filters.toDate} onChange={this.onToDateChange} />
+                                </label>
+                                <label>
+                                    {_t("file_panel|filter_type")}
+                                    <select value={search.filters.type} onChange={this.onTypeChange}>
+                                        <option value="all">{_t("file_panel|filter_all_types")}</option>
+                                        {search.activeTab === FilePanelTab.Media ? (
+                                            <>
+                                                <option value="m.image">{_t("file_panel|filter_images")}</option>
+                                                <option value="m.video">{_t("file_panel|filter_videos")}</option>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <option value="m.file">{_t("file_panel|filter_files")}</option>
+                                                <option value="m.audio">{_t("file_panel|filter_audio")}</option>
+                                            </>
+                                        )}
+                                    </select>
+                                </label>
+                            </div>
+                        </details>
                     </div>
 
                     <EventPresentationContextProvider layout={Layout.Group}>
-                        <ScrollPanel
-                            className="mx_FilePanel_scrollPanel"
-                            startAtBottom={false}
-                            stickyBottom={false}
-                            onFillRequest={this.onFillRequest}
-                        >
-                            {this.state.loading && this.state.events.length === 0 ? (
-                                <li key="file-panel-loading-initial" className="mx_FilePanel_loading">
-                                    <Spinner />
-                                </li>
-                            ) : null}
-                            {listItems}
-                        </ScrollPanel>
+                        {search.activeTab === FilePanelTab.Media && this.mediaVm ? (
+                            <div className="mx_FilePanel_mediaViewport">
+                                <MediaSearchGridView
+                                    vm={this.mediaVm}
+                                    renderTile={this.renderMediaTile}
+                                    footer={<ul className="mx_FilePanel_mediaFooter">{listItems}</ul>}
+                                    restoreStateFrom={this.scrollPositions.get(`${this.props.roomId}/media`)}
+                                    listRef={this.mediaList}
+                                />
+                            </div>
+                        ) : (
+                            <Virtuoso
+                                ref={this.filesList}
+                                restoreStateFrom={this.scrollPositions.get(`${this.props.roomId}/files`)}
+                                className="mx_FilePanel_scrollPanel"
+                                data={filteredEvents}
+                                computeItemKey={(_, event) => event.getId() ?? `${event.getRoomId()}-${event.getTs()}`}
+                                itemContent={(_, event) => <RoomFileSearchTile event={event} />}
+                                endReached={() => void this.onFillRequest(false)}
+                                context={listItems}
+                                components={{ Footer: FilePanelFooter }}
+                            />
+                        )}
                     </EventPresentationContextProvider>
                 </BaseCard>
             </ScopedRoomContextProvider>
         );
     }
 
-    private getFilteredEventsForActiveTab(events: MatrixEvent[]): MatrixEvent[] {
-        const msgtypes = this.state.activeTab === FilePanelTab.Media ? MEDIA_MSGTYPES : FILE_MSGTYPES;
-        return events.filter((event) => {
-            if (event.getType() !== "m.room.message") return false;
-            const msgtype = event.getContent()?.msgtype;
-            return typeof msgtype === "string" && msgtypes.has(msgtype);
-        });
-    }
-
-    private filterByFileName(events: MatrixEvent[], term: string): MatrixEvent[] {
-        const q = term.trim().toLowerCase();
-        if (!q) return events;
-        return events.filter((event) => {
-            const body = event.getContent()?.body;
-            return typeof body === "string" && body.toLowerCase().includes(q);
-        });
-    }
-
-    private buildGroupedEventTiles(events: MatrixEvent[], roomId: string): React.ReactNode[] {
-        const nodes: React.ReactNode[] = [];
-        let lastGroupKey: string | undefined;
-
-        for (const event of events) {
-            const ts = event.getTs();
-            const date = new Date(ts);
-
-            const groupKey =
-                this.state.activeTab === FilePanelTab.Media
-                    ? `${date.getFullYear()}-${date.getMonth()}`
-                    : `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-
-            if (groupKey !== lastGroupKey) {
-                const label =
-                    this.state.activeTab === FilePanelTab.Media
-                        ? new Intl.DateTimeFormat(getUserLanguage(), { year: "numeric", month: "long" }).format(date)
-                        : formatFullDateNoDayNoTime(date);
-
-                nodes.push(
-                    <li key={`group-${groupKey}`} className="mx_FilePanel_groupHeader">
-                        <TimelineSeparator label={label}>
-                            <span className="mx_FilePanel_groupHeaderLabel">{label}</span>
-                        </TimelineSeparator>
-                    </li>,
-                );
-                lastGroupKey = groupKey;
-            }
-
-            const eventId = event.getId() ?? `${roomId}-${event.getTs()}`;
-            nodes.push(<SearchResultTile key={eventId} resultEvent={event} showDateSeparator={false} />);
-        }
-
-        return nodes;
-    }
+    private renderMediaTile = (item: MediaSearchItem<MatrixEvent>): React.ReactNode => (
+        <RoomMediaSearchTile item={item} />
+    );
 }
 
 export default FilePanel;
@@ -474,11 +456,3 @@ enum FilePanelTab {
     Media = "media",
     Files = "files",
 }
-
-const FILE_PANEL_BATCH_SIZE = 50;
-const FILE_PANEL_BACKFILL_LIMIT = 500;
-const FILE_PANEL_MAX_BACKFILL_ATTEMPTS = 3;
-
-const MEDIA_MSGTYPES = new Set(["m.image", "m.video"]);
-const FILE_MSGTYPES = new Set(["m.file", "m.audio"]);
-const FILE_EVENT_MSGTYPES = new Set(["m.file", "m.image", "m.video", "m.audio"]);

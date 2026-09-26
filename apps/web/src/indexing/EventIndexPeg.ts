@@ -30,6 +30,7 @@ const INDEX_VERSION = 1;
 export class EventIndexPeg {
     public index: EventIndex | null = null;
     public error: unknown;
+    public compatibilityWarnings: string[] = [];
 
     private _supportIsInstalled = false;
 
@@ -80,6 +81,7 @@ export class EventIndexPeg {
         const userId = client.getUserId()!;
         const deviceId = client.getDeviceId()!;
         const tokenizerMode = SettingsStore.getValueAt(SettingLevel.DEVICE, "tokenizerMode");
+        this.compatibilityWarnings = [];
 
         try {
             const initResult = await indexManager.initEventIndex(userId, deviceId, tokenizerMode);
@@ -99,19 +101,27 @@ export class EventIndexPeg {
                 // may add checkpoints before onSync is called
                 logger.log("EventIndex: Index is empty, will force add initial checkpoints");
                 index.setForceAddInitialCheckpoints(true);
-            } else if (userVersion === 0 && !eventIndexIsEmpty) {
-                await indexManager.closeEventIndex();
-                await this.deleteEventIndex();
-
-                await indexManager.initEventIndex(userId, deviceId, tokenizerMode);
+            } else if (userVersion === 0) {
+                if (!indexManager.canUpgradeUserVersion(userVersion, INDEX_VERSION)) {
+                    throw new Error("The existing non-empty event index version cannot be validated; data was kept.");
+                }
                 await indexManager.setUserVersion(INDEX_VERSION);
             }
 
             logger.log("EventIndex: Successfully initialized the event index");
             await index.init();
+            this.compatibilityWarnings = (await indexManager.getCompatibilityWarnings?.()) ?? [];
+            if (this.compatibilityWarnings.includes("legacy_edits_unverified")) {
+                logger.warn("Some older local edits could not be verified and were not applied to search results.");
+            }
         } catch (e) {
             logger.log("EventIndex: Error initializing the event index", e);
             this.error = e;
+            try {
+                await indexManager.closeEventIndex();
+            } catch {
+                // Keep the initialization error as the visible failure; closing must not trigger data deletion.
+            }
             return false;
         }
 

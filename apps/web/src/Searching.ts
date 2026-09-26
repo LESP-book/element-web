@@ -21,6 +21,8 @@ import {
 
 import { type ISearchArgs } from "./indexing/BaseEventIndexManager";
 import EventIndexPeg from "./indexing/EventIndexPeg";
+import type EventIndex from "./indexing/EventIndex";
+import { MatrixClientPeg } from "./MatrixClientPeg";
 import PlatformPeg from "./PlatformPeg";
 import { isNotUndefined } from "./Typeguards";
 
@@ -158,9 +160,9 @@ export async function combinedSearch(
 async function localSearch(
     searchTerm: string,
     roomId?: string,
-    processResult = true,
+    eventIndex: EventIndex | null = EventIndexPeg.get(),
 ): Promise<{ response: IResultRoomEvents; query: ISearchArgs }> {
-    const eventIndex = EventIndexPeg.get();
+    if (!eventIndex || EventIndexPeg.get() !== eventIndex) throw new Error("Event index account changed");
 
     const searchArgs: ISearchArgs = {
         search_term: searchTerm,
@@ -175,13 +177,27 @@ async function localSearch(
         searchArgs.room_id = roomId;
     }
 
-    const localResult = await eventIndex!.search(searchArgs);
+    const localResult = await eventIndex.search(searchArgs);
+    if (EventIndexPeg.get() !== eventIndex) throw new Error("Event index account changed");
     if (!localResult) {
         throw new Error("Local search failed");
     }
 
-    // Fix state_key: null issue - Seshat includes "state_key": null for non-state events,
-    // which causes matrix-js-sdk to incorrectly treat them as state events
+    normalizeLocalEvents(localResult);
+
+    searchArgs.next_batch = localResult.next_batch;
+
+    const result = {
+        response: localResult,
+        query: searchArgs,
+    };
+
+    return result;
+}
+
+// Apply the same normalization on the first and every subsequent local page.
+function normalizeLocalEvents(localResult: IResultRoomEvents): void {
+    // Seshat may return state_key: null for non-state events.
     if (localResult.results) {
         for (const searchResult of localResult.results) {
             const event = searchResult.result as unknown as Record<string, unknown>;
@@ -199,15 +215,6 @@ async function localSearch(
             }
         }
     }
-
-    searchArgs.next_batch = localResult.next_batch;
-
-    const result = {
-        response: localResult,
-        query: searchArgs,
-    };
-
-    return result;
 }
 
 export interface ISeshatSearchResults extends ISearchResults {
@@ -221,6 +228,7 @@ async function localSearchProcess(
     client: MatrixClient,
     searchTerm: string,
     roomId?: string,
+    index: EventIndex | null = EventIndexPeg.get(),
 ): Promise<ISeshatSearchResults> {
     const emptyResult = {
         results: [],
@@ -229,7 +237,7 @@ async function localSearchProcess(
 
     if (searchTerm === "") return emptyResult;
 
-    const result = await localSearch(searchTerm, roomId);
+    const result = await localSearch(searchTerm, roomId, index);
 
     emptyResult.seshatQuery = result.query;
 
@@ -246,41 +254,43 @@ async function localSearchProcess(
     return processedResult;
 }
 
+function cloneSeshatSearchResults(searchResult: ISeshatSearchResults): ISeshatSearchResults {
+    return {
+        ...searchResult,
+        results: [...searchResult.results],
+        highlights: [...searchResult.highlights],
+        seshatQuery: searchResult.seshatQuery ? { ...searchResult.seshatQuery } : undefined,
+        cachedEvents: searchResult.cachedEvents ? [...searchResult.cachedEvents] : undefined,
+        pendingRequest: undefined,
+    };
+}
+
 async function localPagination(
     client: MatrixClient,
     searchResult: ISeshatSearchResults,
+    eventIndex: EventIndex,
 ): Promise<ISeshatSearchResults> {
-    const eventIndex = EventIndexPeg.get();
-
     if (!searchResult.seshatQuery) {
         throw new Error("localSearchProcess must be called first");
     }
 
-    const localResult = await eventIndex!.search(searchResult.seshatQuery);
+    const workingResult = cloneSeshatSearchResults(searchResult);
+    const query = workingResult.seshatQuery!;
+    const localResult = await eventIndex.search(query);
+    if (EventIndexPeg.get() !== eventIndex) throw new Error("Event index account changed");
     if (!localResult) {
         throw new Error("Local search pagination failed");
     }
 
-    searchResult.seshatQuery.next_batch = localResult.next_batch;
+    normalizeLocalEvents(localResult);
 
-    // We only need to restore the encryption state for the new results, so
-    // remember how many of them we got.
+    // Commit the cursor only to a draft; a processing error leaves the caller's retry point intact.
+    query.next_batch = localResult.next_batch;
     const newResultCount = localResult.results?.length ?? 0;
-
-    const response = {
-        search_categories: {
-            room_events: localResult,
-        },
-    };
-
-    const result = client.processRoomEventsSearch(searchResult, response);
-
-    // Restore our encryption info so we can properly re-verify the events.
+    const response = { search_categories: { room_events: localResult } };
+    const result = client.processRoomEventsSearch(workingResult, response);
     const newSlice = result.results.slice(Math.max(result.results.length - newResultCount, 0));
     restoreEncryptionInfo(newSlice);
-
-    searchResult.pendingRequest = undefined;
-
     return result;
 }
 
@@ -573,51 +583,34 @@ function restoreEncryptionInfo(searchResultSlice: SearchResult[] = []): void {
 async function combinedPagination(
     client: MatrixClient,
     searchResult: ISeshatSearchResults,
+    eventIndex: EventIndex,
 ): Promise<ISeshatSearchResults> {
-    const eventIndex = EventIndexPeg.get();
-
-    const searchArgs = searchResult.seshatQuery;
-    const oldestEventFrom = searchResult.oldestEventFrom;
+    const workingResult = cloneSeshatSearchResults(searchResult);
+    const searchArgs = workingResult.seshatQuery;
+    const oldestEventFrom = workingResult.oldestEventFrom;
 
     let localResult: IResultRoomEvents | undefined;
     let serverSideResult: ISearchResponse | undefined;
 
-    // Fetch events from the local index if we have a token for it and if it's
-    // the local indexes turn or the server has exhausted its results.
-    if (searchArgs?.next_batch && (!searchResult.serverSideNextBatch || oldestEventFrom === "server")) {
-        localResult = await eventIndex!.search(searchArgs);
+    if (searchArgs?.next_batch && (!workingResult.serverSideNextBatch || oldestEventFrom === "server")) {
+        localResult = await eventIndex.search(searchArgs);
+        if (EventIndexPeg.get() !== eventIndex) throw new Error("Event index account changed");
+        if (localResult) normalizeLocalEvents(localResult);
     }
 
-    // Fetch events from the server if we have a token for it and if it's the
-    // local indexes turn or the local index has exhausted its results.
-    if (searchResult.serverSideNextBatch && (oldestEventFrom === "local" || !searchArgs?.next_batch)) {
-        const body = { body: searchResult._query!, next_batch: searchResult.serverSideNextBatch };
+    if (workingResult.serverSideNextBatch && (oldestEventFrom === "local" || !searchArgs?.next_batch)) {
+        const body = { body: workingResult._query!, next_batch: workingResult.serverSideNextBatch };
         serverSideResult = await client.search(body);
     }
 
     const serverEvents: IResultRoomEvents | undefined = serverSideResult?.search_categories.room_events;
-
-    // Combine our events.
-    const combinedResult = combineResponses(searchResult, localResult, serverEvents);
-
-    const response = {
-        search_categories: {
-            room_events: combinedResult,
-        },
-    };
-
-    const oldResultCount = searchResult.results ? searchResult.results.length : 0;
-
-    // Let the client process the combined result.
-    const result = client.processRoomEventsSearch(searchResult, response);
-
-    // Restore our encryption info so we can properly re-verify the events.
+    const combinedResult = combineResponses(workingResult, localResult, serverEvents);
+    const response = { search_categories: { room_events: combinedResult } };
+    const oldResultCount = workingResult.results.length;
+    const result = client.processRoomEventsSearch(workingResult, response);
     const newResultCount = result.results.length - oldResultCount;
     const newSlice = result.results.slice(Math.max(result.results.length - newResultCount, 0));
     restoreEncryptionInfo(newSlice);
-
-    searchResult.pendingRequest = undefined;
-
     return result;
 }
 
@@ -628,16 +621,21 @@ async function eventIndexSearch(
     abortSignal?: AbortSignal,
 ): Promise<ISearchResults> {
     let searchPromise: Promise<ISearchResults>;
-    const isWeb = PlatformPeg.get()?.getHumanReadableName() === "Web Platform";
+    const prefersLocalRoomSearch = Boolean(
+        PlatformPeg.get()?.getEventIndexingManager()?.supportsLocalUnencryptedRoomSearch(),
+    );
+    const index = EventIndexPeg.get();
 
     if (roomId !== undefined) {
         // Web 端：所有房间统一走本地 IndexedDB，行为对齐 FluffyChat（不依赖 homeserver 的 /search）。
-        if (isWeb) {
-            searchPromise = localSearchProcess(client, term, roomId);
+        if (prefersLocalRoomSearch) {
+            searchPromise = index!
+                .ensureRoomTimelineIndexed(roomId)
+                .then(() => localSearchProcess(client, term, roomId, index));
         } else if (await client.getCrypto()?.isEncryptionEnabledInRoom(roomId)) {
             // The search is for a single encrypted room, use our local
             // search method.
-            searchPromise = localSearchProcess(client, term, roomId);
+            searchPromise = localSearchProcess(client, term, roomId, index);
         } else {
             // The search is for a single non-encrypted room, use the
             // server-side search.
@@ -651,9 +649,18 @@ async function eventIndexSearch(
     return searchPromise;
 }
 
+function trackPendingRequest<T extends ISearchResults>(searchResult: T, promise: Promise<T>): Promise<T> {
+    const tracked = promise.finally(() => {
+        if (searchResult.pendingRequest === tracked) searchResult.pendingRequest = undefined;
+    });
+    searchResult.pendingRequest = tracked;
+    return tracked;
+}
+
 function eventIndexSearchPagination(
     client: MatrixClient,
     searchResult: ISeshatSearchResults,
+    index: EventIndex,
 ): Promise<ISeshatSearchResults> {
     const seshatQuery = searchResult.seshatQuery;
     const serverQuery = searchResult._query;
@@ -661,30 +668,31 @@ function eventIndexSearchPagination(
     if (!seshatQuery) {
         // This is a search in a non-encrypted room. Do the normal server-side
         // pagination.
-        return client.backPaginateRoomEventsSearch(searchResult);
+        return trackPendingRequest(searchResult, client.backPaginateRoomEventsSearch(searchResult));
     } else if (!serverQuery) {
         // This is a search in a encrypted room. Do a local pagination.
-        const promise = localPagination(client, searchResult);
-        searchResult.pendingRequest = promise;
-
-        return promise;
-    } else {
-        // We have both queries around, this is a search across all rooms so a
-        // combined pagination needs to be done.
-        const promise = combinedPagination(client, searchResult);
-        searchResult.pendingRequest = promise;
-
-        return promise;
+        return trackPendingRequest(searchResult, localPagination(client, searchResult, index));
     }
+
+    // We have both queries around, this is a search across all rooms so a
+    // combined pagination needs to be done.
+    return trackPendingRequest(searchResult, combinedPagination(client, searchResult, index));
 }
 
-export function searchPagination(client: MatrixClient, searchResult: ISearchResults): Promise<ISearchResults> {
+export function searchPagination(
+    client: MatrixClient,
+    searchResult: ISearchResults,
+    expectedIndex?: EventIndex | null,
+): Promise<ISearchResults> {
     const eventIndex = EventIndexPeg.get();
-
+    if (expectedIndex !== undefined && (eventIndex !== expectedIndex || MatrixClientPeg.get() !== client)) {
+        return Promise.reject(new Error("Event index account changed"));
+    }
     if (searchResult.pendingRequest) return searchResult.pendingRequest;
-
-    if (eventIndex === null) return client.backPaginateRoomEventsSearch(searchResult);
-    else return eventIndexSearchPagination(client, searchResult);
+    if (eventIndex === null) {
+        return trackPendingRequest(searchResult, client.backPaginateRoomEventsSearch(searchResult));
+    }
+    return eventIndexSearchPagination(client, searchResult, eventIndex);
 }
 
 export default function eventSearch(
@@ -696,6 +704,10 @@ export default function eventSearch(
     const eventIndex = EventIndexPeg.get();
 
     if (eventIndex === null) {
+        // A homeserver cannot search decrypted content in an encrypted room.
+        if (roomId && client.isRoomEncrypted(roomId)) {
+            return Promise.reject(new Error("Local search index unavailable for encrypted room"));
+        }
         return serverSideSearchProcess(client, term, roomId, abortSignal);
     } else {
         return eventIndexSearch(client, term, roomId, abortSignal);
@@ -746,6 +758,8 @@ export interface SearchInfo {
      * The total count of matching results as returned by the backend.
      */
     count?: number;
+    /** Whether count is a complete backend total rather than the currently found results. */
+    countIsExact?: boolean;
     /**
      * Describe the error if any occured.
      */

@@ -25,6 +25,9 @@ export interface ICrawlerCheckpoint {
     /** The pagination index to resume crawling from. */
     token: string;
 
+    /** Live backward token at the start of this history chain, if known. */
+    rootToken?: string;
+
     /**
      * If `fullCrawl` is false (or absent) and we find that we have already indexed the events we find, then we stop crawling.
      *
@@ -49,6 +52,19 @@ export interface ISearchArgs {
 export interface IEventAndProfile {
     event: IMatrixEvent;
     profile: IMatrixProfile;
+    /**
+     * Unedited clear source for restoring withdrawn edits in a file search session.
+     * The content must be decrypted attachment content even when its raw type is m.room.encrypted.
+     */
+    original_event?: IMatrixEvent;
+    /** Valid stored revisions for projecting a retrieved attachment after an edit is withdrawn. */
+    file_edits?: Array<{
+        event_id: string;
+        room_id: string;
+        sender: string;
+        timestamp: number;
+        content: Record<string, unknown>;
+    }>;
 }
 
 export interface ILoadArgs {
@@ -56,6 +72,26 @@ export interface ILoadArgs {
     limit: number;
     fromEvent?: string;
     direction?: string;
+}
+
+/** Filters evaluated by a platform index, not by a partially loaded UI list. */
+export interface IFileQuery {
+    roomId: string;
+    limit: number;
+    category: "media" | "files";
+    term: string;
+    cursor?: string;
+    sender?: string;
+    fromTs?: number;
+    toTs?: number;
+    msgtype?: "m.image" | "m.video" | "m.file" | "m.audio";
+}
+
+/** A page may be empty while its scan cursor has advanced. */
+export interface IFileQueryPage {
+    events: IEventAndProfile[];
+    cursor?: string;
+    exhausted: boolean;
 }
 
 export interface IIndexStats {
@@ -119,6 +155,11 @@ export default abstract class BaseEventIndexManager {
         throw new Error("Unimplemented");
     }
 
+    /** Apply an edit event only after validating its room, sender and relation against the original event. */
+    public async applyEventEdit(editEvent: IMatrixEvent): Promise<void> {
+        return;
+    }
+
     public async isEventIndexEmpty(): Promise<boolean> {
         throw new Error("Unimplemented");
     }
@@ -168,6 +209,16 @@ export default abstract class BaseEventIndexManager {
         throw new Error("Unimplemented");
     }
 
+    /** Whether this manager has validated a safe upgrade from one application index version to another. */
+    public canUpgradeUserVersion(from: number, to: number): boolean {
+        return false;
+    }
+
+    /** Return non-sensitive compatibility warnings discovered while opening the index. */
+    public async getCompatibilityWarnings(): Promise<string[]> {
+        return [];
+    }
+
     /**
      * Commit the previously queued up events to the index.
      *
@@ -189,6 +240,21 @@ export default abstract class BaseEventIndexManager {
      */
     public async searchEventIndex(searchArgs: ISearchArgs): Promise<IResultRoomEvents> {
         throw new Error("Unimplemented");
+    }
+
+    /** Whether current-room plaintext messages should use this index rather than server search. */
+    public supportsLocalUnencryptedRoomSearch(): boolean {
+        return false;
+    }
+
+    /** Whether category and filename filtering can be performed inside the index. */
+    public supportsFilteredFileQuery(): boolean {
+        return false;
+    }
+
+    /** Query files with an opaque scan cursor; unsupported indexes retain their existing loadFileEvents path. */
+    public async queryFileEvents(query: IFileQuery): Promise<IFileQueryPage> {
+        throw new Error("Filtered file query is not supported");
     }
 
     /**
@@ -250,6 +316,16 @@ export default abstract class BaseEventIndexManager {
      */
     public async loadCheckpoints(): Promise<ICrawlerCheckpoint[]> {
         throw new Error("Unimplemented");
+    }
+
+    /** The live backward token for which this room's accessible history was last exhausted. */
+    public async getCompletedRoomToken(roomId: string): Promise<string | null> {
+        return null;
+    }
+
+    /** Persist a completed room boundary after the final batch has been committed. */
+    public async markRoomHistoryComplete(roomId: string, token: string): Promise<void> {
+        return;
     }
 
     /** Load events that contain an mxc URL to a file from the index.
