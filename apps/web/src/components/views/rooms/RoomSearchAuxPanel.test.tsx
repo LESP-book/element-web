@@ -27,58 +27,24 @@ describe("RoomSearchAuxPanel", () => {
                     promise: new Promise(() => {}),
                 }}
                 isRoomEncrypted={false}
-                onSearchScopeChange={vi.fn()}
                 onCancelClick={vi.fn()}
             />,
         );
 
-        expect(screen.getByText("5 results found for", { exact: false })).toHaveTextContent(
-            "5 results found for “abcd”",
+        expect(screen.getByText("5 results found so far for", { exact: false })).toHaveTextContent(
+            "5 results found so far for “abcd”",
         );
     });
 
-    it("should allow the user to toggle to all rooms search", async () => {
-        const onSearchScopeChange = vi.fn();
-
-        render(
-            <RoomSearchAuxPanel
-                isRoomEncrypted={false}
-                onSearchScopeChange={onSearchScopeChange}
-                onCancelClick={vi.fn()}
-            />,
-        );
-
-        screen.getByText("Search all rooms").click();
-        expect(onSearchScopeChange).toHaveBeenCalledWith(SearchScope.All);
-    });
-
-    it("should allow the user to toggle back to room-specific search", async () => {
-        const onSearchScopeChange = vi.fn();
-
-        render(
-            <RoomSearchAuxPanel
-                searchInfo={{
-                    searchId: 1234,
-                    term: "abcd",
-                    scope: SearchScope.All,
-                    promise: new Promise(() => {}),
-                }}
-                isRoomEncrypted={false}
-                onSearchScopeChange={onSearchScopeChange}
-                onCancelClick={vi.fn()}
-            />,
-        );
-
-        screen.getByText("Search this room").click();
-        expect(onSearchScopeChange).toHaveBeenCalledWith(SearchScope.Room);
+    it("should not offer a scope which still searches only this room", () => {
+        render(<RoomSearchAuxPanel isRoomEncrypted={false} onCancelClick={vi.fn()} />);
+        expect(screen.queryByText("Search all rooms")).not.toBeInTheDocument();
     });
 
     it("should allow the user to cancel a search", async () => {
         const onCancelClick = vi.fn();
 
-        render(
-            <RoomSearchAuxPanel isRoomEncrypted={false} onSearchScopeChange={vi.fn()} onCancelClick={onCancelClick} />,
-        );
+        render(<RoomSearchAuxPanel isRoomEncrypted={false} onCancelClick={onCancelClick} />);
 
         screen.getByRole("button", { name: "Cancel" }).click();
         expect(onCancelClick).toHaveBeenCalled();

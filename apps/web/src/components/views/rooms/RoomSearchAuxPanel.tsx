@@ -9,7 +9,7 @@ Please see LICENSE files in the repository root for full details.
 import React from "react";
 import SearchIcon from "@vector-im/compound-design-tokens/assets/web/icons/search";
 import CloseIcon from "@vector-im/compound-design-tokens/assets/web/icons/close";
-import { IconButton, Link } from "@vector-im/compound-web";
+import { IconButton } from "@vector-im/compound-web";
 
 import { _t } from "../../../languageHandler";
 import { PosthogScreenTracker } from "../../../PosthogTrackers";
@@ -20,11 +20,10 @@ import InlineSpinner from "../elements/InlineSpinner";
 interface Props {
     searchInfo?: SearchInfo;
     isRoomEncrypted: boolean;
-    onSearchScopeChange(this: void, scope: SearchScope): void;
     onCancelClick(this: void): void;
 }
 
-const RoomSearchAuxPanel: React.FC<Props> = ({ searchInfo, isRoomEncrypted, onSearchScopeChange, onCancelClick }) => {
+const RoomSearchAuxPanel: React.FC<Props> = ({ searchInfo, isRoomEncrypted, onCancelClick }) => {
     const scope = searchInfo?.scope ?? SearchScope.Room;
 
     return (
@@ -34,14 +33,22 @@ const RoomSearchAuxPanel: React.FC<Props> = ({ searchInfo, isRoomEncrypted, onSe
                 <div className="mx_RoomSearchAuxPanel_summary">
                     <SearchIcon width="24px" height="24px" />
                     <div className="mx_RoomSearchAuxPanel_summary_text">
-                        {searchInfo?.count !== undefined ? (
-                            _t(
-                                "room|search|summary",
-                                { count: searchInfo.count },
-                                { query: () => <strong>{searchInfo.term}</strong> },
+                        {searchInfo?.error !== undefined ? (
+                            searchInfo.error.message
+                        ) : searchInfo?.count !== undefined ? (
+                            scope === SearchScope.Room && !searchInfo.countIsExact ? (
+                                _t(
+                                    "room|search|found_so_far",
+                                    { count: searchInfo.count },
+                                    { query: () => <strong>{searchInfo.term}</strong> },
+                                )
+                            ) : (
+                                _t(
+                                    "room|search|summary",
+                                    { count: searchInfo.count },
+                                    { query: () => <strong>{searchInfo.term}</strong> },
+                                )
                             )
-                        ) : searchInfo?.error !== undefined ? (
-                            searchInfo?.error.message
                         ) : (
                             <InlineSpinner />
                         )}
@@ -55,16 +62,6 @@ const RoomSearchAuxPanel: React.FC<Props> = ({ searchInfo, isRoomEncrypted, onSe
                     </div>
                 </div>
                 <div className="mx_RoomSearchAuxPanel_buttons">
-                    <Link
-                        onClick={() =>
-                            onSearchScopeChange(scope === SearchScope.Room ? SearchScope.All : SearchScope.Room)
-                        }
-                        kind="primary"
-                    >
-                        {scope === SearchScope.All
-                            ? _t("room|search|this_room_button")
-                            : _t("room|search|all_rooms_button")}
-                    </Link>
                     <IconButton
                         onClick={onCancelClick}
                         destructive

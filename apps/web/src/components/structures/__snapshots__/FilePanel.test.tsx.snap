@@ -49,35 +49,49 @@ exports[`FilePanel > renders empty state 1`] = `
     <div
       class="mx_FilePanel_controls"
     >
-      <form
-        class="_root_1o4d9_17 mx_FilePanel_searchForm"
+      <div
+        class="_root_hutds_8"
       >
-        <label
-          class="_label_1o4d9_60 _field_1o4d9_27 _search_1lktl_8 mx_FilePanel_search"
-          for="react-use-id-2"
+        <form
+          class="_root_1o4d9_17"
         >
-          <svg
-            class="_icon_1lktl_37"
-            fill="currentColor"
-            height="20"
-            viewBox="0 0 24 24"
-            width="20"
-            xmlns="http://www.w3.org/2000/svg"
+          <label
+            class="_label_1o4d9_60 _field_1o4d9_27 _search_1lktl_8"
+            for="react-use-id-2"
           >
-            <path
-              d="M15.05 16.463a7.5 7.5 0 1 1 1.414-1.414l3.243 3.244a1 1 0 0 1-1.414 1.414zM16 10.5a5.5 5.5 0 1 0-11 0 5.5 5.5 0 0 0 11 0"
+            <svg
+              class="_icon_1lktl_37"
+              fill="currentColor"
+              height="20"
+              viewBox="0 0 24 24"
+              width="20"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M15.05 16.463a7.5 7.5 0 1 1 1.414-1.414l3.243 3.244a1 1 0 0 1-1.414 1.414zM16 10.5a5.5 5.5 0 1 0-11 0 5.5 5.5 0 0 0 11 0"
+              />
+            </svg>
+            <input
+              class="_input_1lktl_52"
+              id="react-use-id-2"
+              name="file_panel_search"
+              placeholder="Search by file name…"
+              type="search"
+              value=""
             />
-          </svg>
-          <input
-            class="_input_1lktl_52"
-            id="react-use-id-2"
-            name="file_panel_search"
-            placeholder="Search by file name…"
-            type="search"
-            value=""
-          />
-        </label>
-      </form>
+          </label>
+        </form>
+        <div
+          class="_footer_hutds_14"
+        >
+          <span
+            aria-live="polite"
+            role="status"
+          >
+            No more indexed files in the accessible history.
+          </span>
+        </div>
+      </div>
       <fieldset
         class="mx_FilterTabGroup"
       >
@@ -107,49 +121,110 @@ exports[`FilePanel > renders empty state 1`] = `
           </span>
         </label>
       </fieldset>
+      <details
+        class="mx_FilePanel_advancedFilters"
+      >
+        <summary>
+          Filters
+        </summary>
+        <div
+          class="mx_FilePanel_filters"
+        >
+          <label>
+            Sender ID
+            <input
+              type="text"
+              value=""
+            />
+          </label>
+          <label>
+            From date
+            <input
+              type="date"
+              value=""
+            />
+          </label>
+          <label>
+            To date
+            <input
+              type="date"
+              value=""
+            />
+          </label>
+          <label>
+            Attachment type
+            <select>
+              <option
+                value="all"
+              >
+                All types
+              </option>
+              <option
+                value="m.file"
+              >
+                Files
+              </option>
+              <option
+                value="m.audio"
+              >
+                Audio
+              </option>
+            </select>
+          </label>
+        </div>
+      </details>
     </div>
     <div
-      class="_scrollbar_1d5jg_8 mx_AutoHideScrollbar mx_ScrollPanel mx_FilePanel_scrollPanel"
-      tabindex="-1"
+      class="mx_FilePanel_scrollPanel"
+      data-testid="virtuoso-scroller"
+      data-virtuoso-scroller="true"
+      style="height: 100%; overflow-y: auto; position: relative; outline-color: none; outline-style: none; outline-width: initial;"
+      tabindex="0"
     >
       <div
-        class="mx_RoomView_messageListWrapper"
+        data-viewport-type="element"
+        style="height: 100%; position: absolute; top: 0px; width: 100%;"
       >
-        <ol
-          aria-live="polite"
-          class="mx_RoomView_MessageList"
-        >
-          <li
-            class="mx_FilePanel_empty"
+        <div
+          data-testid="virtuoso-item-list"
+          style="box-sizing: border-box; margin-top: 0px; padding-bottom: 0px; padding-top: 0px;"
+        />
+        <div>
+          <ul
+            class="mx_FilePanel_mediaFooter"
           >
-            <div
-              class="_flex_4dswl_9 mx_EmptyState"
-              style="--mx-flex-display: flex; --mx-flex-direction: column; --mx-flex-align: center; --mx-flex-justify: center; --mx-flex-gap: var(--cpd-space-4x); --mx-flex-wrap: nowrap;"
+            <li
+              class="mx_FilePanel_empty"
             >
-              <svg
-                fill="currentColor"
-                height="32px"
-                viewBox="0 0 24 24"
-                width="32px"
-                xmlns="http://www.w3.org/2000/svg"
+              <div
+                class="_flex_4dswl_9 mx_EmptyState"
+                style="--mx-flex-display: flex; --mx-flex-direction: column; --mx-flex-align: center; --mx-flex-justify: center; --mx-flex-gap: var(--cpd-space-4x); --mx-flex-wrap: nowrap;"
               >
-                <path
-                  d="M6 22q-.824 0-1.412-.587A1.93 1.93 0 0 1 4 20V4q0-.824.588-1.412A1.93 1.93 0 0 1 6 2h7.175a1.98 1.98 0 0 1 1.4.575l4.85 4.85q.275.275.425.638.15.361.15.762V20q0 .824-.587 1.413A1.93 1.93 0 0 1 18 22zm7-14V4H6v16h12V9h-4a.97.97 0 0 1-.713-.287A.97.97 0 0 1 13 8"
-                />
-              </svg>
-              <p
-                class="_typography_6v6n8_153 _font-body-lg-semibold_6v6n8_74"
-              >
-                No files visible in this room
-              </p>
-              <p
-                class="_typography_6v6n8_153 _font-body-md-regular_6v6n8_50"
-              >
-                Attach files from chat or just drag and drop them anywhere in a room.
-              </p>
-            </div>
-          </li>
-        </ol>
+                <svg
+                  fill="currentColor"
+                  height="32px"
+                  viewBox="0 0 24 24"
+                  width="32px"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M6 22q-.824 0-1.412-.587A1.93 1.93 0 0 1 4 20V4q0-.824.588-1.412A1.93 1.93 0 0 1 6 2h7.175a1.98 1.98 0 0 1 1.4.575l4.85 4.85q.275.275.425.638.15.361.15.762V20q0 .824-.587 1.413A1.93 1.93 0 0 1 18 22zm7-14V4H6v16h12V9h-4a.97.97 0 0 1-.713-.287A.97.97 0 0 1 13 8"
+                  />
+                </svg>
+                <p
+                  class="_typography_6v6n8_153 _font-body-lg-semibold_6v6n8_74"
+                >
+                  No files visible in this room
+                </p>
+                <p
+                  class="_typography_6v6n8_153 _font-body-md-regular_6v6n8_50"
+                >
+                  Attach files from chat or just drag and drop them anywhere in a room.
+                </p>
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>

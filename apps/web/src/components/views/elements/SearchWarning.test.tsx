@@ -75,6 +75,7 @@ describe("<SearchWarning />", () => {
     afterEach(() => {
         EventIndexPeg.index = null;
         EventIndexPeg.error = undefined;
+        EventIndexPeg.compatibilityWarnings = [];
     });
 
     describe("with desktop builds available", () => {
@@ -117,6 +118,41 @@ describe("<SearchWarning />", () => {
         const settle = async (): Promise<void> => {
             await act(async () => {});
         };
+
+        it("shows unverified legacy edit compatibility in the active local search view", () => {
+            EventIndexPeg.compatibilityWarnings = ["legacy_edits_unverified"];
+            const { getByRole, getByText } = render(
+                <SearchWarning
+                    isRoomEncrypted={false}
+                    kind={WarningKind.Search}
+                    scope={SearchScope.Room}
+                    roomId={SEARCHED_ROOM}
+                />,
+            );
+            expect(getByRole("status")).toContainElement(
+                getByText(
+                    "Some older message edits could not be verified and may not be reflected in local search results.",
+                ),
+            );
+        });
+
+        it("does not show room-local edit compatibility in file or all-room warning contexts", () => {
+            EventIndexPeg.compatibilityWarnings = ["legacy_edits_unverified"];
+            const { queryByText, rerender } = render(
+                <SearchWarning isRoomEncrypted={false} kind={WarningKind.Files} />,
+            );
+            expect(
+                queryByText(
+                    "Some older message edits could not be verified and may not be reflected in local search results.",
+                ),
+            ).not.toBeInTheDocument();
+            rerender(<SearchWarning isRoomEncrypted={false} kind={WarningKind.Search} scope={SearchScope.All} />);
+            expect(
+                queryByText(
+                    "Some older message edits could not be verified and may not be reflected in local search results.",
+                ),
+            ).not.toBeInTheDocument();
+        });
 
         it("warns a room-scoped search while the searched room is still being crawled", async () => {
             setIndex(new FakeEventIndex([SEARCHED_ROOM], []));

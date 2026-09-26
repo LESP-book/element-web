@@ -25,13 +25,15 @@ import { clientAndSDKContextRenderOptions, stubClient } from "test-utils";
 import { RoomSearchView } from "./RoomSearchView";
 import MatrixClientContext from "../../contexts/MatrixClientContext";
 import { MatrixClientPeg } from "../../MatrixClientPeg";
-import { searchPagination, SearchScope } from "../../Searching";
+import eventSearch, { searchPagination, SearchScope } from "../../Searching";
 import { SDKContextClass } from "../../contexts/SDKContextClass";
 import type * as Searching from "../../Searching";
 import dis from "../../dispatcher/dispatcher";
 import { Action } from "../../dispatcher/actions";
+import { RoomMessageSearchSession } from "../../search/RoomMessageSearchSession";
 
 vi.mock("../../Searching", async () => ({
+    default: vi.fn(),
     searchPagination: vi.fn(),
     SearchScope: (await vi.importActual<typeof Searching>("../../Searching")).SearchScope,
 }));
@@ -55,6 +57,190 @@ describe("<RoomSearchView/>", () => {
 
     afterEach(async () => {
         vi.restoreAllMocks();
+    });
+
+    it("stops pagination after the current page and offers continuation", async () => {
+        const initial: ISearchResults = { results: [], highlights: [], next_batch: "server-cursor" };
+        const pending = Promise.withResolvers<ISearchResults>();
+        vi.mocked(searchPagination).mockReturnValue(pending.promise);
+        render(
+            <RoomSearchView
+                inProgress={false}
+                term="hello"
+                scope={SearchScope.Room}
+                promise={Promise.resolve(initial)}
+                className=""
+                onUpdate={vi.fn()}
+            />,
+            clientAndSDKContextRenderOptions(client, sdkContext),
+        );
+        fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Stop searching" }));
+        pending.resolve({ ...initial, results: [] });
+        await screen.findByRole("button", { name: "Continue searching" });
+        await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument());
+        expect(searchPagination).toHaveBeenCalledOnce();
+        fireEvent.click(screen.getByRole("button", { name: "Continue searching" }));
+        expect(await screen.findByRole("button", { name: "Show more" })).toBeInTheDocument();
+    });
+
+    it("should show a committed message while a later page is still pending and retain it on failure", async () => {
+        const second = Promise.withResolvers<ISearchResults>();
+        const onUpdate = vi.fn();
+        const initial: ISearchResults = { results: [], highlights: [], next_batch: "first" };
+        const first = SearchResult.fromJson(
+            {
+                rank: 1,
+                result: {
+                    room_id: room.roomId,
+                    event_id: "$first",
+                    sender: client.getSafeUserId(),
+                    origin_server_ts: 1,
+                    content: { body: "Found early", msgtype: "m.text" },
+                    type: EventType.RoomMessage,
+                },
+                context: { profile_info: {}, events_before: [], events_after: [] },
+            },
+            eventMapper,
+        );
+        vi.mocked(searchPagination)
+            .mockResolvedValueOnce({ results: [first], highlights: [], next_batch: "second" })
+            .mockReturnValueOnce(second.promise);
+        const promise = Promise.resolve(initial);
+        function Parent(): React.JSX.Element {
+            const [inProgress, setInProgress] = React.useState(false);
+            return (
+                <RoomSearchView
+                    inProgress={inProgress}
+                    term="Found"
+                    scope={SearchScope.Room}
+                    promise={promise}
+                    className=""
+                    onUpdate={(running, results, error, countIsExact) => {
+                        onUpdate(running, results, error, countIsExact);
+                        setInProgress(running);
+                    }}
+                />
+            );
+        }
+        const { container } = render(<Parent />, clientAndSDKContextRenderOptions(client, sdkContext));
+        fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+        await waitFor(() => expect(searchPagination).toHaveBeenCalledTimes(2));
+        expect(container.querySelector(".mx_RoomSearchResultItem_snippet")).toHaveTextContent("Found early");
+        expect(onUpdate).toHaveBeenCalledWith(true, expect.objectContaining({ results: [first] }), null, true);
+        expect(container.querySelector(".mx_RoomView_messagePanelSearchSpinner")).not.toBeInTheDocument();
+        second.reject(new Error("second page failed"));
+        await screen.findByRole("alert");
+        expect(container.querySelector(".mx_RoomSearchResultItem_snippet")).toHaveTextContent("Found early");
+    });
+
+    it("should finish a pending search under root StrictMode effect replay", async () => {
+        const deferred = Promise.withResolvers<ISearchResults>();
+        const onUpdate = vi.fn();
+        const { container, rerender } = render(
+            <RoomSearchView
+                inProgress={true}
+                term="hello"
+                scope={SearchScope.Room}
+                promise={deferred.promise}
+                className=""
+                onUpdate={onUpdate}
+            />,
+            { ...clientAndSDKContextRenderOptions(client, sdkContext), reactStrictMode: true },
+        );
+        deferred.resolve({
+            results: [
+                SearchResult.fromJson(
+                    {
+                        rank: 1,
+                        result: {
+                            room_id: room.roomId,
+                            event_id: "$strict",
+                            sender: client.getSafeUserId(),
+                            origin_server_ts: 1,
+                            content: { body: "Hello from StrictMode", msgtype: "m.text" },
+                            type: EventType.RoomMessage,
+                        },
+                        context: { profile_info: {}, events_before: [], events_after: [] },
+                    },
+                    eventMapper,
+                ),
+            ],
+            highlights: [],
+            count: 1,
+        });
+        await waitFor(() =>
+            expect(container.querySelector(".mx_RoomSearchResultItem_snippet")).toHaveTextContent(
+                "Hello from StrictMode",
+            ),
+        );
+        await waitFor(() =>
+            expect(onUpdate).toHaveBeenCalledWith(false, expect.objectContaining({ count: 1 }), null, true),
+        );
+        rerender(
+            <RoomSearchView
+                inProgress={false}
+                term="hello"
+                scope={SearchScope.Room}
+                promise={deferred.promise}
+                className=""
+                onUpdate={onUpdate}
+            />,
+        );
+        expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    });
+
+    it("should stop an initial request without letting its late result change the current state", async () => {
+        const deferred = Promise.withResolvers<ISearchResults>();
+        const onUpdate = vi.fn();
+        render(
+            <RoomSearchView
+                inProgress={true}
+                term="hello"
+                scope={SearchScope.Room}
+                promise={deferred.promise}
+                className=""
+                onUpdate={onUpdate}
+            />,
+            clientAndSDKContextRenderOptions(client, sdkContext),
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Stop searching" }));
+        expect(onUpdate).toHaveBeenLastCalledWith(false, null, null);
+        deferred.resolve({ results: [], highlights: [] });
+        await screen.findByRole("button", { name: "Continue searching" });
+        expect(onUpdate).not.toHaveBeenCalledWith(false, expect.objectContaining({ results: [] }), null, true);
+    });
+
+    it("should restart a stopped pagination request without waiting for an unsettled old page", async () => {
+        const pending = Promise.withResolvers<ISearchResults>();
+        const initial: ISearchResults = { results: [], highlights: [], next_batch: "server-cursor" };
+        vi.mocked(searchPagination).mockReturnValue(pending.promise);
+        vi.mocked(eventSearch).mockResolvedValue({ results: [], highlights: [] });
+        const dispose = vi.spyOn(RoomMessageSearchSession.prototype, "dispose");
+        const onUpdate = vi.fn();
+        const { unmount } = render(
+            <RoomSearchView
+                inProgress={false}
+                term="hello"
+                scope={SearchScope.Room}
+                promise={Promise.resolve(initial)}
+                className=""
+                onUpdate={onUpdate}
+            />,
+            clientAndSDKContextRenderOptions(client, sdkContext),
+        );
+        fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Stop searching" }));
+        fireEvent.click(screen.getByRole("button", { name: "Continue searching" }));
+        await waitFor(() => expect(eventSearch).toHaveBeenCalledOnce());
+        await waitFor(() =>
+            expect(onUpdate).toHaveBeenLastCalledWith(false, expect.objectContaining({ results: [] }), null, true),
+        );
+        pending.resolve({ ...initial, results: [] });
+        await Promise.resolve();
+        expect(onUpdate).toHaveBeenLastCalledWith(false, expect.objectContaining({ results: [] }), null, true);
+        unmount();
+        expect(dispose).toHaveBeenCalledTimes(2);
     });
 
     it("should show a spinner before the promise resolves", async () => {
@@ -247,8 +433,10 @@ describe("<RoomSearchView/>", () => {
         );
 
         await screen.findByRole("progressbar");
-        expect(container.querySelector(".mx_RoomSearchResultItem_snippet")).toHaveTextContent("Foo Test Bar");
-        expect(onUpdate).toHaveBeenCalledWith(false, expect.objectContaining({}), null);
+        await waitFor(() =>
+            expect(container.querySelector(".mx_RoomSearchResultItem_snippet")).toHaveTextContent("Foo Test Bar"),
+        );
+        expect(onUpdate).toHaveBeenCalledWith(false, expect.objectContaining({}), null, true);
         expect(screen.getByRole("button", { name: "Show more" })).toHaveAttribute("aria-disabled", "true");
 
         rerender(
@@ -266,7 +454,11 @@ describe("<RoomSearchView/>", () => {
         expect(showMore).not.toHaveAttribute("aria-disabled", "true");
         fireEvent.click(showMore);
         await screen.findByText("Potato");
-        expect(searchPagination).toHaveBeenCalledWith(client, expect.objectContaining({ next_batch: "next_batch" }));
+        expect(searchPagination).toHaveBeenCalledWith(
+            client,
+            expect.objectContaining({ next_batch: "next_batch" }),
+            null,
+        );
         await waitFor(() => {
             expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
         });
@@ -369,8 +561,9 @@ describe("<RoomSearchView/>", () => {
             await deferred.promise;
         } catch {}
 
-        expect(onUpdate).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(false, null, null));
         expect(onUpdate).toHaveBeenCalledWith(true, null, null);
+        expect(screen.queryByTestId("messagePanelSearchSpinner")).not.toBeInTheDocument();
     });
 
     it("should combine search results when the query is present in multiple sucessive messages", async () => {

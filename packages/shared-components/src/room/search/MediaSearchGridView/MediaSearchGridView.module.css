@@ -1,0 +1,36 @@
+/*
+Copyright 2026 LESP-book
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+
+.scroll {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+}
+
+.month {
+    color: var(--cpd-color-text-secondary);
+    font: var(--cpd-font-body-sm-semibold);
+    padding: var(--cpd-space-3x);
+}
+
+.grid {
+    display: grid;
+    gap: var(--cpd-space-2x);
+    list-style: none;
+    margin: 0;
+    padding: var(--cpd-space-2x) var(--cpd-space-3x);
+}
+
+.grid > li {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.grid img,
+.grid video {
+    max-width: 100%;
+}

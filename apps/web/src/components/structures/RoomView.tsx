@@ -434,6 +434,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
 
     private roomView = createRef<HTMLDivElement>();
     private searchResultsPanel = createRef<ScrollPanel>();
+    private nextSearchId = 0;
     private messagePanel: TimelinePanel | null = null;
     private roomViewBody = createRef<HTMLDivElement>();
 
@@ -1778,8 +1779,9 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             });
     }
 
-    private onSearch = (term: string, scope = SearchScope.Room): void => {
-        const effectiveScope = scope === SearchScope.All ? SearchScope.Room : scope;
+    private onSearch = (term: string): void => {
+        const effectiveScope = SearchScope.Room;
+        this.state.search?.abortController?.abort();
         const roomId = effectiveScope === SearchScope.Room ? this.getRoomId() : undefined;
         debuglog("sending search request");
         const abortController = new AbortController();
@@ -1790,7 +1792,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             search: {
                 // make sure that we don't end up showing results from
                 // an aborted search by keeping a unique id.
-                searchId: new Date().getTime(),
+                searchId: ++this.nextSearchId,
                 roomId,
                 term,
                 scope: effectiveScope,
@@ -1800,20 +1802,27 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         });
     };
 
-    private onSearchScopeChange = (scope: SearchScope): void => {
-        this.onSearch(this.state.search?.term ?? "", SearchScope.Room);
-    };
-
-    private onSearchUpdate = (inProgress: boolean, searchResults: ISearchResults | null, error: Error | null): void => {
+    private onSearchUpdate = (
+        searchId: number,
+        inProgress: boolean,
+        searchResults: ISearchResults | null,
+        error: Error | null,
+        countIsExact?: boolean,
+    ): void => {
         // 搜索过程中用户可能会关闭搜索面板（将 this.state.search 置为 undefined）。
         // 此时若仍有异步更新回调进来，不能“复活”一个缺少 promise 等字段的 search state，
         // 否则 RoomSearchView 会收到 undefined promise 并在 `.then` 处崩溃。
         this.setState((prevState) => {
-            if (!prevState.search) return null;
+            if (!prevState.search || prevState.search.searchId !== searchId) return null;
             return {
                 search: {
                     ...prevState.search,
-                    count: searchResults?.count,
+                    count: searchResults
+                        ? countIsExact
+                            ? (searchResults.count ?? searchResults.results.length)
+                            : searchResults.results.length
+                        : prevState.search.count,
+                    countIsExact: countIsExact ?? prevState.search.countIsExact,
                     error: error ?? undefined,
                     inProgress,
                 },
@@ -1946,6 +1955,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
     };
 
     private onCancelSearchClick = (): Promise<void> => {
+        this.state.search?.abortController?.abort();
         return new Promise<void>((resolve) => {
             this.setState(
                 {
@@ -2425,7 +2435,6 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                     <RoomSearchAuxPanel
                         searchInfo={this.state.search}
                         onCancelClick={this.onCancelSearchClick}
-                        onSearchScopeChange={this.onSearchScopeChange}
                         isRoomEncrypted={isRoomEncrypted}
                     />
                 );
@@ -2527,6 +2536,13 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         let hideMessagePanel = false;
 
         if (this.state.search) {
+            const searchId = this.state.search.searchId;
+            const onUpdate = (
+                inProgress: boolean,
+                results: ISearchResults | null,
+                error: Error | null,
+                countIsExact?: boolean,
+            ): void => this.onSearchUpdate(searchId, inProgress, results, error, countIsExact);
             searchResultsPanel = (
                 <RoomSearchView
                     key={this.state.search.searchId}
@@ -2536,7 +2552,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                     promise={this.state.search.promise}
                     inProgress={!!this.state.search.inProgress}
                     className={this.messagePanelClassNames}
-                    onUpdate={this.onSearchUpdate}
+                    onUpdate={onUpdate}
                 />
             );
             hideMessagePanel = true;

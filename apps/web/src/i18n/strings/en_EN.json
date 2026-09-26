@@ -1259,11 +1259,37 @@
         "sent": "Feedback sent! Thanks, we appreciate it!"
     },
     "file_panel": {
+        "continue_search": "Continue searching",
         "empty_description": "Attach files from chat or just drag and drop them anywhere in a room.",
         "empty_heading": "No files visible in this room",
+        "filter_all_types": "All types",
+        "filter_audio": "Audio",
+        "filter_files": "Files",
+        "filter_from": "From date",
+        "filter_images": "Images",
+        "filter_sender": "Sender ID",
+        "filter_to": "To date",
+        "filter_type": "Attachment type",
+        "filter_videos": "Videos",
+        "filters": "Filters",
+        "found_in_scanned_range": "No matching files in the scanned range. Search earlier history to continue.",
         "guest_note": "You must <a>register</a> to use this functionality",
+        "history_access_limited": "Older files cannot be accessed. Results only cover the available history.",
+        "history_cursor_failed": "Earlier history could not be completed. Retry to continue.",
+        "index_needs_attention": "The local search index needs attention. Check your browser storage or restart search indexing in Settings.",
+        "index_unavailable": "File index unavailable. Files cannot be searched right now.",
+        "invalid_date_range": "Choose a valid date range.",
+        "load_failed": "Could not load files. Retry to continue searching.",
+        "operation_pending": "An earlier search operation is still pending. Wait before continuing, or reload Element to restart search without deleting your index.",
         "peek_note": "You must join the room to see its files",
+        "scanned_count": "Scanned %(count)s messages",
+        "search_complete": "No more indexed files in the accessible history.",
+        "search_incomplete": "Results may be incomplete. Search earlier history to continue.",
         "search_placeholder": "Search by file name…",
+        "search_stopped": "Search paused. Continue to scan more files.",
+        "search_waiting": "Waiting to search…",
+        "searching": "Searching this room…",
+        "stop_search": "Stop searching",
         "tab_media": "Media"
     },
     "forward": {
@@ -2101,16 +2127,20 @@
         "room_content": "Room content",
         "room_is_low_priority": "This is a low priority room",
         "search": {
-            "all_rooms_button": "Search all rooms",
+            "found_in_scanned_range": "No messages in the scanned range. Search earlier history to continue.",
+            "found_so_far": {
+                "one": "1 result found so far for “<query/>”",
+                "other": "%(count)s results found so far for “<query/>”"
+            },
+            "history_access_limited": "Older messages cannot be accessed. Results only cover the available history.",
+            "history_cursor_failed": "Earlier history could not be completed. Retry to continue.",
+            "index_changed": "The search index or account changed. Start a new search.",
+            "load_failed": "Could not search messages. Retry to continue.",
             "placeholder": "Search messages… (press Enter)",
             "summary": {
                 "one": "1 result found for “<query/>”",
                 "other": "%(count)s results found for “<query/>”"
-            },
-            "tab_messages": "Messages",
-            "tab_gallery": "Gallery",
-            "tab_files": "Files",
-            "this_room_button": "Search this room"
+            }
         },
         "unknown_status_code_for_timeline_jump": "unknown status code",
         "unread_notifications_predecessor": {
@@ -2445,8 +2475,9 @@
         "warning_kind_files_app": "Use the <a>Desktop app</a> to see all encrypted files",
         "warning_kind_search": "This version of %(brand)s does not support searching encrypted messages",
         "warning_kind_search_app": "Use the <a>Desktop app</a> to search encrypted messages",
+        "warning_kind_search_partial": "Results may be incomplete because your search index is still being built.",
         "warning_kind_search_settings": "Enable message search in <a>settings</a> to search encrypted messages",
-        "warning_kind_search_partial": "Results may be incomplete because your search index is still being built."
+        "warning_legacy_edits": "Some older message edits could not be verified and may not be reflected in local search results."
     },
     "setting": {
         "help_about": {

@@ -6,9 +6,12 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 import { test, expect } from "../../element-web-test";
+import type { Locator, Page, TestInfo } from "@playwright/test";
+import type { EventType, MsgType } from "matrix-js-sdk/src/matrix";
 import { viewRoomSummaryByName } from "./utils";
 import { isDendrite } from "../../plugins/homeserver/dendrite";
 import { getSampleFilePath } from "../../sample-files";
+import { readFile } from "node:fs/promises";
 import type { ElementAppPage } from "../../pages/ElementAppPage";
 
 const ROOM_NAME = "Test room";
@@ -22,6 +25,60 @@ async function uploadFile(app: ElementAppPage, sampleFile: string) {
     await expect(app.page.locator(".mx_RoomView_body .mx_EventTile").last().getByRole("status")).toHaveAccessibleName(
         "Your message was sent",
     );
+}
+
+async function verifyZoomedDownload(
+    page: Page,
+    panel: Locator,
+    link: Locator,
+    testInfo: TestInfo,
+    label: string,
+): Promise<void> {
+    await expect(link).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+0");
+    const baselineWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    let previousZoomWidth = baselineWidth;
+    try {
+        for (const [percent, presses] of [
+            [100, 0],
+            [150, 3],
+            [200, 5],
+        ] as const) {
+            await page.keyboard.press("ControlOrMeta+0");
+            for (let i = 0; i < presses; i++) await page.keyboard.press("ControlOrMeta+Shift+Equal");
+            // Browser zoom changes the layout viewport; do not assume Chrome's platform-specific step size.
+            await expect
+                .poll(() => page.evaluate(() => document.documentElement.clientWidth), { timeout: 2_000 })
+                .toBeLessThanOrEqual(percent === 100 ? baselineWidth + 1 : previousZoomWidth - 1);
+            const zoomWidth = await page.evaluate(() => document.documentElement.clientWidth);
+            if (percent === 100) expect(zoomWidth).toBe(baselineWidth);
+            previousZoomWidth = zoomWidth;
+            await link.scrollIntoViewIfNeeded();
+            const panelBounds = await panel.boundingBox();
+            const bounds = await link.boundingBox();
+            expect(panelBounds).not.toBeNull();
+            expect(bounds).not.toBeNull();
+            expect(bounds!.x).toBeGreaterThanOrEqual(panelBounds!.x);
+            expect(bounds!.y).toBeGreaterThanOrEqual(panelBounds!.y);
+            expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width + 1);
+            expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(panelBounds!.y + panelBounds!.height + 1);
+            const downloadPromise = page.waitForEvent("download");
+            await link.click();
+            const download = await downloadPromise;
+            expect(await download.failure()).toBeNull();
+            const downloadPath = await download.path();
+            expect(downloadPath).not.toBeNull();
+            expect((await readFile(downloadPath!)).byteLength).toBeGreaterThan(0);
+            const screenshot = await panel.screenshot();
+            await testInfo.attach(`real-media-panel-${label}-zoom-${percent}`, {
+                body: screenshot,
+                contentType: "image/png",
+            });
+            await panel.screenshot({ path: `/tmp/element-search-panel-${label}-zoom-${percent}.png` });
+        }
+    } finally {
+        if (!page.isClosed()) await page.keyboard.press("ControlOrMeta+0");
+    }
 }
 
 test.describe("FilePanel", () => {
@@ -186,6 +243,278 @@ test.describe("FilePanel", () => {
             // The panel renders files as a preview tile, which shows the size as the tile body.
             await expect(tile.getByText(size)).toBeVisible();
         });
+    });
+
+    test("finds a file after four empty history pages without clicking continue", async ({ page, app, user }) => {
+        await page.locator(".mx_FilePanel").getByRole("button", { name: "Close" }).click();
+        const roomId = await app.client.createRoom({ name: "Sparse files fixture" });
+        await app.viewRoomById(roomId);
+        let pages = 0;
+        await page.route("**/_matrix/client/**/rooms/**/messages?*", async (route) => {
+            if (!route.request().url().includes(encodeURIComponent(roomId))) return route.continue();
+            pages++;
+            const attachment = pages === 5;
+            await route.fulfill({
+                contentType: "application/json",
+                body: JSON.stringify({
+                    start: new URL(route.request().url()).searchParams.get("from"),
+                    end: `sparse-${pages}`,
+                    chunk:
+                        pages <= 5
+                            ? [
+                                  {
+                                      event_id: `$sparse-${pages}`,
+                                      room_id: roomId,
+                                      sender: user.userId,
+                                      origin_server_ts: Date.now() - pages * 1000,
+                                      type: "m.room.message",
+                                      content: attachment
+                                          ? {
+                                                msgtype: "m.file",
+                                                body: "found-fifth.txt",
+                                                url: "mxc://localhost/sparse-fixture",
+                                            }
+                                          : { msgtype: "m.text", body: `ordinary message ${pages}` },
+                                  },
+                              ]
+                            : [],
+                }),
+            });
+        });
+        await viewRoomSummaryByName(page, app, "Sparse files fixture");
+        await page.getByRole("menuitem", { name: "Files" }).click();
+        await expect(page.locator(".mx_FilePanel").getByText("found-fifth.txt")).toBeVisible({ timeout: 20_000 });
+        expect(pages).toBeGreaterThanOrEqual(5);
+    });
+
+    test("finds a real room message and jumps to it in development StrictMode", async ({ page, app }) => {
+        const message = "Search lifecycle check in room";
+        const composer = app.getComposerField();
+        await composer.fill(message);
+        await composer.press("Enter");
+        await expect(page.getByText(message, { exact: true })).toBeVisible();
+        await page.locator(".mx_FilePanel").getByRole("button", { name: "Close" }).click();
+        await app.toggleRoomInfoPanel();
+        const input = page.locator(".mx_RoomSummaryCard_search").getByRole("searchbox");
+        await input.fill("lifecycle check");
+        await input.press("Enter");
+        const result = page.locator(".mx_RoomView_searchResultsPanel").getByText(message, { exact: true });
+        await expect(result).toBeVisible();
+        await page.locator(".mx_RoomView_searchResultsPanel").getByRole("button", { name: "View in room" }).click();
+        await expect(page.getByTestId("event-tile-slot-body").getByText(message, { exact: true })).toBeVisible();
+    });
+
+    test("downloads an encrypted image from the real media panel", async ({ page, app }) => {
+        await page.locator(".mx_FilePanel").getByRole("button", { name: "Close" }).click();
+        const roomId = await app.client.createRoom({
+            name: "Encrypted media fixture",
+            initial_state: [
+                {
+                    type: "m.room.encryption",
+                    state_key: "",
+                    content: { algorithm: "m.megolm.v1.aes-sha2" },
+                },
+            ],
+        });
+        await app.viewRoomById(roomId);
+        await expect(page.getByRole("heading", { name: /Encrypted media fixture New members/ })).toBeVisible();
+        await uploadFile(app, "riot.png");
+        await viewRoomSummaryByName(page, app, "Encrypted media fixture");
+        await page.getByRole("menuitem", { name: "Files" }).click();
+        const panel = page.locator(".mx_FilePanel");
+        await panel.getByText("Media", { exact: true }).click();
+        const button = panel.locator(".mx_RoomMediaSearchTile").getByRole("button", { name: /^Download/ });
+        await expect(button).toBeVisible();
+        const downloadPromise = page.waitForEvent("download");
+        await button.click();
+        expect((await downloadPromise).suggestedFilename()).toBe("riot.png");
+    });
+
+    test("keeps media downloads usable with the global hide-preview setting", async ({ page, app }) => {
+        const settings = await app.settings.openUserSettings("Preferences");
+        await settings.getByLabel("Show media in timeline").getByRole("radio", { name: "Always hide" }).click();
+        await app.closeDialog();
+        await uploadFile(app, "riot.png");
+        const panel = page.locator(".mx_FilePanel");
+        await panel.getByText("Media", { exact: true }).click();
+        const tile = panel.locator(".mx_RoomMediaSearchTile").filter({ hasText: "riot.png" });
+        const link = tile.getByRole("link", { name: /^Download/ });
+        await expect(link).toBeVisible();
+        const downloadPromise = page.waitForEvent("download");
+        await link.click();
+        expect((await downloadPromise).suggestedFilename()).toBe("riot.png");
+    });
+
+    test("keeps the media action visible when its preview fails to load", async ({ page, app }) => {
+        const roomId = await app.client.createRoom({ name: "Broken media fixture" });
+        await app.viewRoomById(roomId);
+        await app.client.sendEvent(roomId, null, "m.room.message" as EventType, {
+            msgtype: "m.image" as MsgType,
+            body: "broken-preview.png",
+            url: "mxc://localhost/does-not-exist",
+            info: { mimetype: "image/png", size: 10 },
+        });
+        await viewRoomSummaryByName(page, app, "Broken media fixture");
+        await page.getByRole("menuitem", { name: "Files" }).click();
+        const panel = page.locator(".mx_FilePanel");
+        await panel.getByText("Media", { exact: true }).click();
+        const tile = panel.locator(".mx_RoomMediaSearchTile").filter({ hasText: "broken-preview.png" });
+        await expect(tile).toBeVisible();
+        await expect(tile.getByText(/Unable to show image due to error/)).toBeVisible();
+        const fallbackDownload = tile.getByRole("link", { name: /^Download/ });
+        await expect(fallbackDownload).toBeVisible();
+        await fallbackDownload.click();
+        await expect(tile.getByRole("button", { name: "View in room" })).toBeVisible();
+        await tile.screenshot({ path: "/tmp/element-search-failed-media-tile.png" });
+    });
+
+    test("keeps the download action when a video preview fails", async ({ page, app }) => {
+        const roomId = await app.client.createRoom({ name: "Broken video fixture" });
+        await app.viewRoomById(roomId);
+        await app.client.sendEvent(roomId, null, "m.room.message" as EventType, {
+            msgtype: "m.video" as MsgType,
+            body: "broken-preview.webm",
+            url: "mxc://localhost/does-not-exist-video",
+            info: { mimetype: "video/webm", size: 10 },
+        });
+        await viewRoomSummaryByName(page, app, "Broken video fixture");
+        await page.getByRole("menuitem", { name: "Files" }).click();
+        const panel = page.locator(".mx_FilePanel");
+        await panel.getByText("Media", { exact: true }).click();
+        const tile = panel.locator(".mx_RoomMediaSearchTile").filter({ hasText: "broken-preview.webm" });
+        await expect(tile).toBeVisible();
+        const downloadLink = tile.getByRole("link", { name: /^Download/ });
+        await expect(downloadLink).toBeVisible();
+        await downloadLink.click();
+        await expect(tile).toBeVisible();
+    });
+
+    test("keeps a long multilingual media filename and its download usable", async ({ page, app }) => {
+        const name = `${"旅途中的照片和一个很长的说明".repeat(5)}.png`;
+        await app.composerUploadFiles("room", {
+            name,
+            mimeType: "image/png",
+            buffer: await readFile(getSampleFilePath("riot.png")),
+        });
+        const panel = page.locator(".mx_FilePanel");
+        await panel.getByText("Media", { exact: true }).click();
+        const tile = panel.locator(".mx_RoomMediaSearchTile").filter({ hasText: name });
+        await expect(tile.getByTitle(name)).toBeVisible();
+        const link = tile.getByRole("link", { name: /^Download/ });
+        await expect(link).toBeVisible();
+        const bounds = await link.boundingBox();
+        const panelBounds = await panel.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(panelBounds).not.toBeNull();
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width + 1);
+        const downloadPromise = page.waitForEvent("download");
+        await link.click();
+        expect((await downloadPromise).suggestedFilename()).toBe(name);
+    });
+
+    test("keeps image downloads usable at real Chrome page zoom", async ({ page, app, user }, testInfo) => {
+        test.skip(
+            testInfo.project.name !== "ChromeZoom",
+            "Browser-level zoom requires the dedicated ChromeZoom project",
+        );
+        test.skip(
+            Boolean(process.env.PW_TEST_CONNECT_WS_ENDPOINT),
+            "Browser-level zoom requires a local Chromium process; remote Playwright connections cannot load the extension",
+        );
+        test.setTimeout(90_000);
+        expect(await app.client.evaluate((client) => client.getUserId())).toBe(user.userId);
+        await uploadFile(app, "riot.png");
+        const panel = page.locator(".mx_FilePanel");
+        await panel.getByText("Media", { exact: true }).click();
+        await verifyZoomedDownload(
+            page,
+            panel,
+            panel
+                .locator(".mx_RoomMediaSearchTile")
+                .filter({ hasText: "riot.png" })
+                .getByRole("link", {
+                    name: /^Download/,
+                }),
+            testInfo,
+            "image",
+        );
+    });
+
+    test("keeps video downloads usable at real Chrome page zoom", async ({ page, app, user }, testInfo) => {
+        test.skip(
+            testInfo.project.name !== "ChromeZoom",
+            "Browser-level zoom requires the dedicated ChromeZoom project",
+        );
+        test.skip(
+            Boolean(process.env.PW_TEST_CONNECT_WS_ENDPOINT),
+            "Browser-level zoom requires a local Chromium process; remote Playwright connections cannot load the extension",
+        );
+        test.setTimeout(90_000);
+        expect(await app.client.evaluate((client) => client.getUserId())).toBe(user.userId);
+        await uploadFile(app, "5secvid.webm");
+        const panel = page.locator(".mx_FilePanel");
+        await panel.getByText("Media", { exact: true }).click();
+        await verifyZoomedDownload(
+            page,
+            panel,
+            panel
+                .locator(".mx_RoomMediaSearchTile")
+                .filter({ hasText: "5secvid.webm" })
+                .getByRole("link", {
+                    name: /^Download/,
+                }),
+            testInfo,
+            "video",
+        );
+    });
+
+    test("shows real media downloads within narrow panels", async ({ page, app }, testInfo) => {
+        await uploadFile(app, "riot.png");
+        await uploadFile(app, "5secvid.webm");
+        const panel = page.locator(".mx_FilePanel");
+        await expect(panel.getByText("No matching files in the scanned range")).toHaveCount(0);
+        await panel.getByText("Media", { exact: true }).click();
+        const tile = panel.locator(".mx_RoomMediaSearchTile").filter({ hasText: "riot.png" });
+        const downloadLink = tile.getByRole("link", { name: /^Download/ });
+        const videoLink = panel
+            .locator(".mx_RoomMediaSearchTile")
+            .filter({ hasText: "5secvid.webm" })
+            .getByRole("link", { name: /^Download/ });
+        await expect(downloadLink).toBeVisible();
+        await expect(videoLink).toBeVisible();
+        await page.setViewportSize({ width: 1920, height: 900 });
+        const handle = page.locator(".mx_RightPanel_ResizeWrapper .mx_ResizeHandle--horizontal");
+        for (const width of [320, 400, 600]) {
+            const current = await page.locator(".mx_RightPanel_ResizeWrapper").boundingBox();
+            const grip = await handle.boundingBox();
+            expect(current).not.toBeNull();
+            expect(grip).not.toBeNull();
+            await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(grip!.x + grip!.width / 2 - (width - current!.width), grip!.y + grip!.height / 2, {
+                steps: 8,
+            });
+            await page.mouse.up();
+            await expect.poll(async () => (await panel.boundingBox())?.width).toBeGreaterThanOrEqual(width - 2);
+            const panelBounds = await panel.boundingBox();
+            expect(panelBounds).not.toBeNull();
+            for (const [link, filename] of [
+                [downloadLink, "riot.png"],
+                [videoLink, "5secvid.webm"],
+            ] as const) {
+                await link.scrollIntoViewIfNeeded();
+                const bounds = await link.boundingBox();
+                expect(bounds).not.toBeNull();
+                expect(bounds!.x).toBeGreaterThanOrEqual(panelBounds!.x);
+                expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(panelBounds!.x + panelBounds!.width + 1);
+                const downloadPromise = page.waitForEvent("download");
+                await link.click();
+                expect((await downloadPromise).suggestedFilename()).toBe(filename);
+            }
+            const screenshot = await panel.screenshot();
+            await testInfo.attach(`real-media-panel-${width}`, { body: screenshot, contentType: "image/png" });
+            await panel.screenshot({ path: `/tmp/element-search-panel-${width}.png` });
+        }
     });
 
     test.describe("download", () => {

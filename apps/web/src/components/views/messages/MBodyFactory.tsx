@@ -10,12 +10,15 @@ import { type MatrixEvent, MsgType } from "matrix-js-sdk/src/matrix";
 import { type ImageContent } from "matrix-js-sdk/src/types";
 import {
     DecryptionFailureBodyView,
+    ImageBodyViewState,
+    VideoBodyViewState,
     FileBodyView,
     ImageBodyView,
     MediaPreviewGroupPreview,
     RedactedBodyView,
     VideoBodyView,
     useCreateAutoDisposedViewModel,
+    useViewModel,
 } from "@element-hq/web-shared-components";
 
 import { type IBodyProps } from "./IBodyProps";
@@ -160,13 +163,14 @@ export function VideoBodyFactory({
         vm.setOnPreviewClick((): void => setMediaVisible(true));
     }, [setMediaVisible, vm]);
 
+    const videoState = useViewModel(vm).state;
     const showFileBody =
         !forExport &&
         timelineRenderingType !== TimelineRenderingType.Room &&
         timelineRenderingType !== TimelineRenderingType.Pinned &&
         timelineRenderingType !== TimelineRenderingType.Search;
 
-    return (
+    const videoBody = (
         <VideoBodyView
             vm={vm}
             className="mx_MVideoBody"
@@ -183,6 +187,24 @@ export function VideoBodyFactory({
             ) : null}
         </VideoBodyView>
     );
+    if (
+        timelineRenderingType === TimelineRenderingType.File &&
+        videoState === VideoBodyViewState.ERROR &&
+        showFileBody
+    ) {
+        return (
+            <>
+                {videoBody}
+                <FileBodyFactory
+                    mxEvent={mxEvent}
+                    mediaEventHelper={mediaEventHelper}
+                    forExport={forExport}
+                    showFileInfo={false}
+                />
+            </>
+        );
+    }
+    return videoBody;
 }
 
 export function ImageBodyFactory({
@@ -262,6 +284,7 @@ export function ImageBodyFactory({
         vm.setSetMediaVisible(setMediaVisible);
     }, [setMediaVisible, shouldFallbackToFileBody, vm]);
 
+    const imageState = useViewModel(vm).state;
     const showFileBody =
         !forExport &&
         timelineRenderingType !== TimelineRenderingType.Room &&
@@ -281,7 +304,7 @@ export function ImageBodyFactory({
         );
     }
 
-    return (
+    const imageBody = (
         <ImageBodyView
             vm={vm}
             className="mx_ImageBody"
@@ -299,6 +322,25 @@ export function ImageBodyFactory({
             ) : null}
         </ImageBodyView>
     );
+    // In the file panel the image error view drops its children, including the built-in download row.
+    if (
+        timelineRenderingType === TimelineRenderingType.File &&
+        imageState === ImageBodyViewState.ERROR &&
+        showFileBody
+    ) {
+        return (
+            <>
+                {imageBody}
+                <FileBodyFactory
+                    mxEvent={mxEvent}
+                    mediaEventHelper={mediaEventHelper}
+                    forExport={forExport}
+                    showFileInfo={false}
+                />
+            </>
+        );
+    }
+    return imageBody;
 }
 
 export function RedactedBodyFactory({ mxEvent, ref }: Pick<IBodyProps, "mxEvent" | "ref">): JSX.Element {

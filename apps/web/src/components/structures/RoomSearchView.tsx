@@ -12,7 +12,6 @@ import {
     type IThreadBundledRelationship,
     type MatrixEvent,
     type Room,
-    type SearchResult,
     THREAD_RELATION_TYPE,
 } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
@@ -26,68 +25,18 @@ import AccessibleButton from "../views/elements/AccessibleButton";
 import MemberAvatar from "../views/avatars/MemberAvatar";
 import { _t } from "../../languageHandler";
 import { haveRendererForEvent } from "../../events/EventTileFactory";
-import { searchPagination, SearchScope } from "../../Searching";
+import eventSearch, { SearchScope } from "../../Searching";
+import { RoomMessageSearchSession } from "../../search/RoomMessageSearchSession";
 import MatrixClientContext from "../../contexts/MatrixClientContext";
 import SettingsStore from "../../settings/SettingsStore";
 import dis from "../../dispatcher/dispatcher";
 import { Action } from "../../dispatcher/actions";
 import { type ViewRoomPayload } from "../../dispatcher/payloads/ViewRoomPayload";
 import { useScopedRoomContext } from "../../contexts/ScopedRoomContext.tsx";
-import EventIndexPeg from "../../indexing/EventIndexPeg";
 import { formatFullDateNoDayNoTime, formatTime } from "../../DateUtils";
 
-const DEBUG = false;
-let debuglog = function (msg: string): void {};
-// 手动点击“显示更多”时更积极地向更早历史推进，减少“点了没变化”的体感。
-const MANUAL_SHOW_MORE_PAGES = 50;
-const AUTO_SHOW_MORE_PAGES = 3;
-// 每次回溯索引拉取的事件数：适当增大以减少“找不到更早消息”的情况（尤其是高活跃群）。
-const ROOM_SEARCH_BACKFILL_LIMIT = 1000;
-
-function parseLocalNextBatch(nextBatch?: string): { exhausted: boolean } | null {
-    if (!nextBatch) return null;
-    try {
-        const parsed = JSON.parse(nextBatch);
-        if (parsed && typeof parsed === "object" && "exhausted" in parsed) {
-            return { exhausted: Boolean(parsed.exhausted) };
-        }
-    } catch {
-        // 服务端的 next_batch 是不透明字符串，不是 JSON，解析失败时继续按服务端分页令牌处理。
-    }
-    return null;
-}
-
-function mergeSearchResults(prev: ISearchResults | null, next: ISearchResults): ISearchResults {
-    if (!prev) return next;
-
-    const existing = new Map<string, SearchResult>();
-    for (const result of prev.results ?? []) {
-        const id = result.context.getEvent().getId();
-        if (id) existing.set(id, result);
-    }
-
-    const merged = [...(prev.results ?? [])];
-    for (const result of next.results ?? []) {
-        const id = result.context.getEvent().getId();
-        if (id && !existing.has(id)) {
-            merged.push(result);
-        }
-    }
-
-    merged.sort((a, b) => {
-        const tsDiff = b.context.getEvent().getTs() - a.context.getEvent().getTs();
-        if (tsDiff !== 0) return tsDiff;
-        const aId = a.context.getEvent().getId() ?? "";
-        const bId = b.context.getEvent().getId() ?? "";
-        return aId.localeCompare(bId);
-    });
-
-    return {
-        ...next,
-        results: merged,
-        count: merged.length,
-    };
-}
+const MANUAL_SHOW_MORE_PAGES = 2;
+const AUTO_SHOW_MORE_PAGES = 2;
 
 const TEXT_MESSAGE_TYPES = new Set(["m.text", "m.notice", "m.emote"]);
 const SNIPPET_CONTEXT_BEFORE = 30;
@@ -261,19 +210,19 @@ function RoomSearchMessageResultItem({
     );
 }
 
-/* istanbul ignore next */
-if (DEBUG) {
-    // using bind means that we get to keep useful line numbers in the console
-    debuglog = logger.log.bind(console);
-}
-
 interface Props {
     term: string;
     scope: SearchScope;
     inProgress: boolean;
     promise: Promise<ISearchResults>;
     className: string;
-    onUpdate(this: void, inProgress: boolean, results: ISearchResults | null, error: Error | null): void;
+    onUpdate(
+        this: void,
+        inProgress: boolean,
+        results: ISearchResults | null,
+        error: Error | null,
+        countIsExact?: boolean,
+    ): void;
     ref?: Ref<ScrollPanel>;
 }
 
@@ -285,194 +234,143 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
     const roomId = roomContext.roomId;
     const [highlights, setHighlights] = useState<string[] | null>(null);
     const [results, setResults] = useState<ISearchResults | null>(null);
-    const resultsRef = useRef<ISearchResults | null>(null);
+    const [error, setError] = useState(false);
+    const sessionRef = useRef<RoomMessageSearchSession | null>(null);
+    const ownerRef = useRef<{ current: RoomMessageSearchSession } | null>(null);
+    const generation = useRef(0);
     const [isBackfilling, setIsBackfilling] = useState(false);
-    const [backfillExhausted, setBackfillExhausted] = useState(false);
     const [isPaginating, setIsPaginating] = useState(false);
-    const aborted = useRef(false);
+    const [stopped, setStopped] = useState(false);
     const isLoadingMore = useRef(false);
 
-    useEffect(() => {
-        resultsRef.current = results;
-    }, [results]);
-
-    useEffect(() => {
-        setBackfillExhausted(false);
+    const stopSearch = (): void => {
+        generation.current++;
+        sessionRef.current?.stop();
+        setIsPaginating(false);
         setIsBackfilling(false);
-    }, [term, scope]);
+        setStopped(true);
+        onUpdate(false, sessionRef.current?.current ?? null, null);
+    };
 
-    const handleSearchResult = useCallback(
-        (searchPromise: Promise<ISearchResults>, merge = false): Promise<ISearchResults | null> => {
-            onUpdate(true, null, null);
+    const publishResults = useCallback(
+        (page: ISearchResults, session: RoomMessageSearchSession, loading: boolean): void => {
+            let highlights = page.highlights;
+            if (!highlights.includes(term)) highlights = highlights.concat(term);
+            highlights = highlights.sort((a, b) => b.length - a.length);
 
-            return searchPromise.then(
-                async (results): Promise<ISearchResults | null> => {
-                    debuglog("search complete");
-                    if (aborted.current) {
-                        logger.error("Discarding stale search results");
-                        return null;
-                    }
+            for (const result of page.results) {
+                for (const event of result.context.getTimeline()) {
+                    const bundledRelationship = event.getServerAggregatedRelation<IThreadBundledRelationship>(
+                        THREAD_RELATION_TYPE.name,
+                    );
+                    if (!bundledRelationship || event.getThread()) continue;
+                    const room = client.getRoom(event.getRoomId());
+                    const thread = room?.findThreadForEvent(event);
+                    if (thread) event.setThread(thread);
+                    else room?.createThread(event.getId()!, event, [], true);
+                }
+            }
 
-                    // postgres on synapse returns us precise details of the strings
-                    // which actually got matched for highlighting.
-                    //
-                    // In either case, we want to highlight the literal search term
-                    // whether it was used by the search engine or not.
-
-                    let highlights = results.highlights;
-                    if (!highlights.includes(term)) {
-                        highlights = highlights.concat(term);
-                    }
-
-                    // For overlapping highlights,
-                    // favour longer (more specific) terms first
-                    highlights = highlights.sort(function (a, b) {
-                        return b.length - a.length;
-                    });
-
-                    for (const result of results.results) {
-                        for (const event of result.context.getTimeline()) {
-                            const bundledRelationship = event.getServerAggregatedRelation<IThreadBundledRelationship>(
-                                THREAD_RELATION_TYPE.name,
-                            );
-                            if (!bundledRelationship || event.getThread()) continue;
-                            const room = client.getRoom(event.getRoomId());
-                            const thread = room?.findThreadForEvent(event);
-                            if (thread) {
-                                event.setThread(thread);
-                            } else {
-                                room?.createThread(event.getId()!, event, [], true);
-                            }
-                        }
-                    }
-
-                    setHighlights(highlights);
-                    const finalResults = merge ? mergeSearchResults(resultsRef.current, results) : results;
-                    setResults({ ...finalResults }); // copy to force a refresh
-                    onUpdate(false, finalResults, null);
-                    return finalResults;
-                },
-                (error) => {
-                    if (aborted.current) {
-                        logger.error("Discarding stale search results");
-                        return null;
-                    }
-                    if (error?.name === "AbortError") {
-                        // 打开结果会取消仍在进行的请求，该取消不应显示为搜索错误。
-                        debuglog("search aborted");
-                        return null;
-                    }
-                    logger.error("Search failed", error);
-                    onUpdate(false, null, error);
-                    return null;
-                },
+            setHighlights(highlights);
+            setResults({ ...page });
+            const issue = session.needsHistoryRetry;
+            setError(issue);
+            onUpdate(
+                loading,
+                page,
+                issue ? new Error(_t("room|search|history_cursor_failed")) : null,
+                session.countIsExact,
             );
         },
         [client, term, onUpdate],
     );
 
-    // Mount & unmount effect
-    useEffect(() => {
-        aborted.current = false;
-        void handleSearchResult(promise);
-        return () => {
-            aborted.current = true;
-        };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const loadMoreMessages = useCallback(
-        async (pages: number): Promise<boolean> => {
-            const baseResults = resultsRef.current;
-            if (!baseResults || inProgress || isBackfilling || isLoadingMore.current) return false;
-            isLoadingMore.current = true;
-            setIsPaginating(true);
-
+    const handleSearchResult = useCallback(
+        async (
+            searchPromise: Promise<ISearchResults | null>,
+            session: RoomMessageSearchSession,
+            requestGeneration: number,
+            initial = false,
+        ): Promise<ISearchResults | null> => {
+            const isCurrent = (): boolean =>
+                generation.current === requestGeneration && sessionRef.current === session && !session.hasStopped;
+            if (!isCurrent()) return null;
+            onUpdate(true, session.current, null);
+            setError(false);
             try {
-                let currentResults: ISearchResults = baseResults;
-                const baseCount = currentResults.results?.length ?? 0;
-                let lastResultCount = baseCount;
-
-                const paginateUpTo = async (maxPages: number): Promise<void> => {
-                    let pagesAfterFirstHitRemaining = 0;
-                    for (let i = 0; i < maxPages; i++) {
-                        if (aborted.current) return;
-                        const prevNextBatch = currentResults.next_batch;
-                        const nextBatchInfo = parseLocalNextBatch(prevNextBatch);
-                        const canPaginate =
-                            Boolean(currentResults.next_batch) && (!nextBatchInfo || !nextBatchInfo.exhausted);
-                        if (!canPaginate) return;
-                        debuglog("requesting more search results");
-                        const next = await handleSearchResult(searchPagination(client, currentResults), true);
-                        if (!next) return;
-                        const newCount = next.results?.length ?? 0;
-                        const nextNextBatch = next.next_batch;
-
-                        // 本地搜索可能会出现“本页无新增匹配，但扫描游标已推进”的情况：
-                        // 例如连续 MAX_SCAN_RECORDS 条都不包含关键字，此时 results 不增长但 next_batch.key 会变。
-                        // 如果我们在这里直接停止，会导致无法继续向更老历史推进，从而表现为“显示更多没反应/搜不到更早消息”。
-                        if (newCount > lastResultCount) {
-                            lastResultCount = newCount;
-                            // 命中到新结果后，再额外多扫几页，让用户一次看到“更多”而不是只多 1 条。
-                            if (pagesAfterFirstHitRemaining === 0) {
-                                pagesAfterFirstHitRemaining = Math.min(5, maxPages - i - 1);
-                            }
-                        } else if (pagesAfterFirstHitRemaining > 0) {
-                            pagesAfterFirstHitRemaining -= 1;
-                            if (pagesAfterFirstHitRemaining === 0) {
-                                currentResults = next;
-                                return;
-                            }
-                        }
-                        if (nextNextBatch === prevNextBatch && newCount <= lastResultCount) return;
-                        currentResults = next;
-                    }
-                };
-
-                // 先尽可能多地分页，减少用户等待/点击次数。
-                await paginateUpTo(pages);
-
-                if (aborted.current) return lastResultCount > baseCount;
-
-                const nextBatchInfo = parseLocalNextBatch(currentResults.next_batch);
-                const isLocalSearch = Boolean((currentResults as any).seshatQuery);
-                const canBackfill =
-                    isLocalSearch && Boolean(nextBatchInfo?.exhausted) && !backfillExhausted && Boolean(roomId);
-
-                // 本地搜索扫描已到尽头：按需回溯更多历史，再继续分页（对齐 FluffyChat 的“搜索更多”）。
-                if (!canBackfill) return lastResultCount > baseCount;
-                const eventIndex = EventIndexPeg.get();
-                if (!eventIndex) {
-                    setBackfillExhausted(true);
-                    return lastResultCount > baseCount;
+                const results = await searchPromise;
+                if (!isCurrent()) return null;
+                if (!results || (initial && !session.acceptInitial(results))) {
+                    throw new Error("Search results unavailable; please search again");
                 }
 
-                setIsBackfilling(true);
-                const { exhausted, error } = await eventIndex.backfillRoom(roomId!, ROOM_SEARCH_BACKFILL_LIMIT);
-                setIsBackfilling(false);
-
-                if (error) {
-                    logger.warn("Room search backfill failed", error);
+                if (!isCurrent()) return null;
+                publishResults(results, session, false);
+                return results;
+            } catch (error) {
+                if (!isCurrent()) return null;
+                if (error instanceof Error && error.name === "AbortError") {
+                    setStopped(true);
+                    onUpdate(false, session.current, null);
+                } else {
+                    logger.error("Search failed", error);
+                    setError(true);
+                    onUpdate(false, session.current, error as Error);
                 }
-
-                if (exhausted) {
-                    setBackfillExhausted(true);
-                    return lastResultCount > baseCount;
-                }
-
-                // 回溯后再次分页，尽量一次补齐更多结果。
-                const next = await handleSearchResult(searchPagination(client, currentResults), true);
-                if (next) {
-                    currentResults = next;
-                    lastResultCount = currentResults.results?.length ?? lastResultCount;
-                }
-                await paginateUpTo(pages);
-                return lastResultCount > baseCount;
-            } finally {
-                isLoadingMore.current = false;
-                setIsPaginating(false);
+                return null;
             }
         },
-        [inProgress, isBackfilling, backfillExhausted, roomId, client, handleSearchResult],
+        [onUpdate, publishResults],
+    );
+
+    useEffect(() => {
+        const session = new RoomMessageSearchSession(client, roomId ?? undefined);
+        const requestGeneration = ++generation.current;
+        const owner = { current: session };
+        ownerRef.current = owner;
+        sessionRef.current = session;
+        void handleSearchResult(promise, session, requestGeneration, true);
+        return () => {
+            owner.current.dispose();
+            ownerRef.current = null;
+            sessionRef.current = null;
+        };
+    }, []); // oxlint-disable-line react-hooks/exhaustive-deps -- Parent keys this view by searchId.
+
+    const loadMoreMessages = useCallback(
+        async (pages: number, allowBackfill = true): Promise<boolean> => {
+            const session = sessionRef.current!;
+            if (!session.current || inProgress || isBackfilling || isLoadingMore.current) return false;
+            const requestGeneration = generation.current;
+            isLoadingMore.current = true;
+            setIsPaginating(true);
+            const previousCount = session.current.results.length;
+            try {
+                await handleSearchResult(
+                    session.loadMore(
+                        pages,
+                        (running) => {
+                            if (generation.current === requestGeneration && sessionRef.current === session)
+                                setIsBackfilling(running);
+                        },
+                        allowBackfill,
+                        (page) => {
+                            if (generation.current === requestGeneration && sessionRef.current === session)
+                                publishResults(page, session, true);
+                        },
+                    ),
+                    session,
+                    requestGeneration,
+                );
+                return (session.current?.results.length ?? 0) > previousCount;
+            } finally {
+                if (sessionRef.current === session) {
+                    isLoadingMore.current = false;
+                    if (generation.current === requestGeneration) setIsPaginating(false);
+                }
+            }
+        },
+        [inProgress, isBackfilling, handleSearchResult, publishResults],
     );
 
     const onSearchMore = useCallback(async (): Promise<void> => {
@@ -483,23 +381,15 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
         async (backwards: boolean): Promise<boolean> => {
             if (backwards) return false;
 
-            const currentResults = resultsRef.current;
-            if (!currentResults) return false;
-
-            const nextBatchInfo = parseLocalNextBatch(currentResults.next_batch);
-            const isLocalSearch = Boolean((currentResults as any).seshatQuery);
-            const canPaginate = Boolean(currentResults.next_batch) && (!nextBatchInfo || !nextBatchInfo.exhausted);
-            const canBackfill = isLocalSearch && !backfillExhausted && Boolean(EventIndexPeg.get()) && Boolean(roomId);
-            if (!canPaginate && !canBackfill) return false;
-
-            return loadMoreMessages(AUTO_SHOW_MORE_PAGES);
+            if (!sessionRef.current?.hasMoreLocal) return false;
+            return loadMoreMessages(AUTO_SHOW_MORE_PAGES, false);
         },
-        [backfillExhausted, roomId, loadMoreMessages],
+        [loadMoreMessages],
     );
 
     const ret: JSX.Element[] = [];
 
-    if (inProgress) {
+    if (inProgress && results === null && !stopped) {
         ret.push(
             <li key="search-spinner">
                 <Spinner />
@@ -515,7 +405,7 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
         }
     };
 
-    if (results === null) {
+    if (results === null && !error && !stopped) {
         ret.push(
             <li key="search-loading">
                 <div
@@ -524,18 +414,17 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
                 >
                     <SearchIcon />
                 </div>
+                <AccessibleButton kind="link_inline" onClick={stopSearch}>
+                    {_t("file_panel|stop_search")}
+                </AccessibleButton>
             </li>,
         );
     } else {
-        const nextBatchInfo = parseLocalNextBatch(results.next_batch);
-        const isLocalSearch = Boolean((results as any).seshatQuery);
-        const canPaginate = Boolean(results.next_batch) && (!nextBatchInfo || !nextBatchInfo.exhausted);
-        const canBackfill = isLocalSearch && !backfillExhausted && Boolean(EventIndexPeg.get()) && Boolean(roomId);
-        const canShowMore = canPaginate || canBackfill;
+        const canShowMore = sessionRef.current?.hasMore ?? false;
 
         let lastRoomId: string | undefined;
         let lastGroupKey: string | undefined;
-        const orderedResults = [...(results.results ?? [])].sort((a, b) => {
+        const orderedResults = [...(results?.results ?? [])].sort((a, b) => {
             const tsDiff = b.context.getEvent().getTs() - a.context.getEvent().getTs();
             if (tsDiff !== 0) return tsDiff;
             const aId = a.context.getEvent().getId() ?? "";
@@ -596,10 +485,16 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
             );
         }
 
-        if (!results.results?.length && !inProgress && !isBackfilling) {
+        if (!results?.results.length && !inProgress && !isBackfilling && !error && !stopped) {
             ret.push(
                 <li key="search-empty">
-                    <h2 className="mx_RoomView_topMarker">{_t("common|no_results")}</h2>
+                    <h2 className="mx_RoomView_topMarker">
+                        {sessionRef.current?.isAccessLimited
+                            ? _t("room|search|history_access_limited")
+                            : canShowMore
+                              ? _t("room|search|found_in_scanned_range")
+                              : _t("common|no_results")}
+                    </h2>
                 </li>,
             );
         }
@@ -621,7 +516,123 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
             );
         }
 
-        if (canShowMore) {
+        if ((inProgress || isPaginating || isBackfilling || results === null) && !stopped && !error) {
+            ret.push(
+                <li key="search-stop">
+                    <AccessibleButton kind="link_inline" onClick={stopSearch}>
+                        {_t("file_panel|stop_search")}
+                    </AccessibleButton>
+                </li>,
+            );
+        }
+
+        if (error) {
+            ret.push(
+                <li key="search-error" role="alert">
+                    {!sessionRef.current?.isCurrentAccount
+                        ? _t("room|search|index_changed")
+                        : sessionRef.current?.needsHistoryRetry
+                          ? _t("room|search|history_cursor_failed")
+                          : _t("room|search|load_failed")}
+                    {sessionRef.current?.isCurrentAccount ? (
+                        <AccessibleButton
+                            kind="link_inline"
+                            onClick={() => {
+                                sessionRef.current?.retryHistory();
+                                const session = sessionRef.current;
+                                if (!session) return;
+                                const requestGeneration = generation.current;
+                                void handleSearchResult(
+                                    session.current
+                                        ? session.loadMore(
+                                              1,
+                                              (running) => {
+                                                  if (
+                                                      generation.current === requestGeneration &&
+                                                      sessionRef.current === session
+                                                  )
+                                                      setIsBackfilling(running);
+                                              },
+                                              true,
+                                              (page) => {
+                                                  if (
+                                                      generation.current === requestGeneration &&
+                                                      sessionRef.current === session
+                                                  )
+                                                      publishResults(page, session, true);
+                                              },
+                                          )
+                                        : eventSearch(client, term, roomId ?? undefined),
+                                    session,
+                                    requestGeneration,
+                                    !session.current,
+                                );
+                            }}
+                        >
+                            {_t("action|retry")}
+                        </AccessibleButton>
+                    ) : null}
+                </li>,
+            );
+        }
+
+        if (stopped) {
+            ret.push(
+                <li key="search-paused">
+                    <AccessibleButton
+                        kind="link_inline"
+                        onClick={() => {
+                            generation.current++;
+                            setStopped(false);
+                            let session = sessionRef.current;
+                            if (session && isLoadingMore.current) {
+                                // The old page may never settle. Restart the query rather than sharing its cursor.
+                                session.dispose();
+                                session = new RoomMessageSearchSession(client, roomId ?? undefined);
+                                if (ownerRef.current) ownerRef.current.current = session;
+                                sessionRef.current = session;
+                                generation.current++;
+                                isLoadingMore.current = false;
+                                setIsPaginating(false);
+                                setResults(null);
+                                setHighlights(null);
+                            }
+                            if (session) {
+                                session.resume();
+                                const requestGeneration = generation.current;
+                                void handleSearchResult(
+                                    session.current
+                                        ? session.loadMore(
+                                              MANUAL_SHOW_MORE_PAGES,
+                                              (running) => {
+                                                  if (
+                                                      generation.current === requestGeneration &&
+                                                      sessionRef.current === session
+                                                  )
+                                                      setIsBackfilling(running);
+                                              },
+                                              true,
+                                              (page) => {
+                                                  if (
+                                                      generation.current === requestGeneration &&
+                                                      sessionRef.current === session
+                                                  )
+                                                      publishResults(page, session, true);
+                                              },
+                                          )
+                                        : eventSearch(client, term, roomId ?? undefined),
+                                    session,
+                                    requestGeneration,
+                                    !session.current,
+                                );
+                            }
+                        }}
+                    >
+                        {_t("file_panel|continue_search")}
+                    </AccessibleButton>
+                </li>,
+            );
+        } else if (canShowMore && !error) {
             ret.push(
                 <li key="search-more">
                     <AccessibleButton
@@ -633,10 +644,14 @@ export const RoomSearchView = ({ term, scope, promise, className, onUpdate, inPr
                     </AccessibleButton>
                 </li>,
             );
-        } else if (results.results?.length) {
+        } else if (!error && results?.results.length) {
             ret.push(
                 <li key="search-no-more">
-                    <h2 className="mx_RoomView_topMarker">{_t("no_more_results")}</h2>
+                    <h2 className="mx_RoomView_topMarker">
+                        {sessionRef.current?.isAccessLimited
+                            ? _t("room|search|history_access_limited")
+                            : _t("no_more_results")}
+                    </h2>
                 </li>,
             );
         }

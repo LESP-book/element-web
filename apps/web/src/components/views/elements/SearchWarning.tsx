@@ -138,6 +138,18 @@ function useIsIndexIncomplete(index: EventIndex | null, scope?: SearchScope, roo
 export default function SearchWarning({ isRoomEncrypted, kind, showLogo = true, scope, roomId }: IProps): JSX.Element {
     const eventIndex = EventIndexPeg.get();
     const indexIncomplete = useIsIndexIncomplete(eventIndex, scope, roomId);
+    if (
+        kind === WarningKind.Search &&
+        scope === SearchScope.Room &&
+        Boolean(roomId) &&
+        EventIndexPeg.compatibilityWarnings.includes("legacy_edits_unverified")
+    ) {
+        return (
+            <div className="mx_SearchWarning" role="status">
+                {_t("seshat|warning_legacy_edits")}
+            </div>
+        );
+    }
 
     if (!isRoomEncrypted) return <></>;
 
